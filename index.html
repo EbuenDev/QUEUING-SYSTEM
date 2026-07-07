@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Clinic Queue Display</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">RHU-II Queue System</p>
+        <h1>Patient Waiting Display</h1>
+        <p>Below is the current status of the patient queue.</p>
+      </div>
+      <a class="nav-link" href="admin.html">Manage Queue</a>
+    </header>
+
+    <main class="board">
+      <section class="card spotlight">
+        <h2>Currently Serving</h2>
+        <div id="current-serving" class="large-number">Waiting for the first patient</div>
+        <p id="current-serving-name" class="muted">No patient is being served yet.</p>
+      </section>
+
+      <section class="card">
+        <h2>Next Patient</h2>
+        <div id="next-patient" class="next-patient">No queue yet</div>
+      </section>
+
+      <section class="card full-width">
+        <div class="section-header">
+          <h2>Waiting List</h2>
+          <span id="queue-count" class="pill">0 patients</span>
+        </div>
+        <ul id="waiting-list" class="queue-list"></ul>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

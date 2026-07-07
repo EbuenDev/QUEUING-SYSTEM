@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Queue Management</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">RHU-II Queue System</p>
+        <h1>Queue Management</h1>
+        <p>Add, update, and remove patients from the waiting line.</p>
+      </div>
+      <a class="nav-link" href="index.html">Patient Display</a>
+    </header>
+
+    <main class="board admin-board">
+      <section class="card full-width">
+        <form id="patient-form" class="patient-form">
+          <input id="patient-name" name="name" type="text" placeholder="Patient name" required />
+          <button type="submit" class="btn btn-primary">Add Patient</button>
+        </form>
+
+        <div class="toolbar">
+          <button id="serve-next-btn" class="btn btn-primary">Serve Next</button>
+          <button id="reset-btn" class="btn btn-secondary">Reset Queue</button>
+        </div>
+
+        <div class="section-header">
+          <h2>Patient List</h2>
+          <span id="admin-count" class="pill">0 patients</span>
+        </div>
+        <ul id="patient-list" class="queue-list admin-list"></ul>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
