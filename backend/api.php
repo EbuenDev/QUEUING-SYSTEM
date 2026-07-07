@@ -1,4 +1,6 @@
 <?php
+
+// only tells the browser that the response is JSON, so it can be handled properly by the frontend
 header('Content-Type: application/json');
 
 $stateFile = __DIR__ . '/queue.json';

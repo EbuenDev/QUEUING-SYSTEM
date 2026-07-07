@@ -3,9 +3,51 @@ let state = {
   nextQueueNumber: 1,
 };
 
+let updateChannel = null;
+
+function broadcastState(nextState) {
+  if (updateChannel) {
+    updateChannel.postMessage({ type: 'queue-state-update', state: nextState });
+  }
+
+  try {
+    localStorage.setItem('queue-state-sync', JSON.stringify({ state: nextState, timestamp: Date.now() }));
+  } catch (error) {
+    console.warn('Unable to broadcast queue state', error);
+  }
+}
+
+function initRealtimeSync() {
+  if (typeof BroadcastChannel !== 'undefined') {
+    updateChannel = new BroadcastChannel('queue-system-sync');
+    updateChannel.addEventListener('message', (event) => {
+      if (event.data?.type === 'queue-state-update' && event.data.state) {
+        state = event.data.state;
+        render();
+      }
+    });
+  }
+
+  window.addEventListener('storage', (event) => {
+    if (event.key !== 'queue-state-sync' || !event.newValue) {
+      return;
+    }
+
+    try {
+      const payload = JSON.parse(event.newValue);
+      if (payload?.state) {
+        state = payload.state;
+        render();
+      }
+    } catch (error) {
+      console.warn('Unable to sync queue state from storage', error);
+    }
+  });
+}
+
 async function fetchState() {
   try {
-    const response = await fetch('backend/api.php');
+    const response = await fetch('backend/api.php', { cache: 'no-store' });
     const data = await response.json();
     if (data?.success && data.state) {
       state = data.state;
@@ -24,12 +66,14 @@ async function postAction(action, payload = {}) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ action, ...payload }),
+      cache: 'no-store',
     });
 
     const data = await response.json();
     if (data?.success && data.state) {
       state = data.state;
       render();
+      broadcastState(data.state);
     }
   } catch (error) {
     console.error('Unable to update queue state', error);
@@ -90,9 +134,12 @@ function renderPatientBoard() {
     .join('');
 }
 
+
+
 function renderAdminQueue() {
   const patientList = document.getElementById('patient-list');
   const adminCount = document.getElementById('admin-count');
+  const isAdminPage = Boolean(document.getElementById('patient-form'));
 
   adminCount.textContent = `${state.patients.length} patients`;
 
@@ -103,19 +150,28 @@ function renderAdminQueue() {
 
   patientList.innerHTML = state.patients
     .map(
-      (patient) => `
-        <li class="queue-item">
-          <div>
-            <strong>#${patient.queueNumber} — ${patient.name}</strong>
-            <span class="badge ${patient.status}">${patient.status}</span>
-          </div>
-          <div class="actions">
-            <button class="btn btn-secondary" data-action="edit" data-id="${patient.id}">Edit</button>
-            <button class="btn btn-primary" data-action="serve" data-id="${patient.id}">Serve</button>
-            <button class="btn btn-danger" data-action="delete" data-id="${patient.id}">Delete</button>
-          </div>
-        </li>
-      `,
+      (patient) => {
+        const actionButtons = [
+          `<button class="btn btn-secondary" data-action="edit" data-id="${patient.id}">Edit</button>`,
+          `<button class="btn btn-primary" data-action="serve" data-id="${patient.id}">Serve</button>`,
+        ];
+
+        if (isAdminPage) {
+          actionButtons.push(`<button class="btn btn-danger" data-action="delete" data-id="${patient.id}">Delete</button>`);
+        }
+
+        return `
+          <li class="queue-item">
+            <div>
+              <strong>#${patient.queueNumber} — ${patient.name}</strong>
+              <span class="badge ${patient.status}">${patient.status}</span>
+            </div>
+            <div class="actions">
+              ${actionButtons.join('')}
+            </div>
+          </li>
+        `;
+      },
     )
     .join('');
 }
@@ -180,14 +236,21 @@ function initAdminPage() {
   const serveNextButton = document.getElementById('serve-next-btn');
   const resetButton = document.getElementById('reset-btn');
 
-  patientForm.addEventListener('submit', (event) => {
-    event.preventDefault();
-    addPatient(patientNameInput.value);
-    patientForm.reset();
-  });
+  if (patientForm && patientNameInput) {
+    patientForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      addPatient(patientNameInput.value);
+      patientForm.reset();
+    });
+  }
 
-  serveNextButton.addEventListener('click', serveNextPatient);
-  resetButton.addEventListener('click', resetQueue);
+  if (serveNextButton) {
+    serveNextButton.addEventListener('click', serveNextPatient);
+  }
+
+  if (resetButton) {
+    resetButton.addEventListener('click', resetQueue);
+  }
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
@@ -207,10 +270,12 @@ function initAdminPage() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  initRealtimeSync();
+
   if (document.getElementById('patient-list')) {
     initAdminPage();
   }
 
   fetchState();
-  setInterval(fetchState, 3000);
+  setInterval(fetchState, 1000);
 });
