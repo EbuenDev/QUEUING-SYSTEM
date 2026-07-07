@@ -13,6 +13,9 @@ body {
   margin: 0;
   min-height: 100vh;
   background: linear-gradient(135deg, #eef4ff, #f8fbff);
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
 }
 
 .topbar {
@@ -124,6 +127,11 @@ body {
 .spotlight {
   background: linear-gradient(135deg, #1d4ed8, #2563eb);
   color: white;
+  transition: background 0.3s ease;
+}
+
+.spotlight.is-serving {
+  background: linear-gradient(135deg, #15803d, #16a34a);
 }
 
 .full-width {
@@ -267,27 +275,113 @@ body {
   flex-wrap: wrap;
 }
 
+.site-credit {
+  margin-top: auto;
+  text-align: center;
+  padding: 16px 24px 24px;
+  color: #5f7794;
+  font-size: 0.95rem;
+  background: transparent;
+}
+
 @media (max-width: 760px) {
   .board {
     grid-template-columns: 1fr;
+    padding: 16px;
+    gap: 14px;
   }
 
   .topbar {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
+    padding: 20px 16px;
   }
 
   .topbar-left {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .header-logo {
+    height: 4.2rem;
+  }
+
+  .topbar h1 {
+    font-size: 1.35rem;
+  }
+
+  .topbar p {
+    font-size: 0.95rem;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .nav-link {
+    display: inline-flex;
+    justify-content: center;
     align-items: center;
   }
 
-  .patient-form {
+  .card {
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .section-header {
     flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .patient-form,
+  .toolbar,
+  .actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .patient-form input,
+  .auth-form input {
+    width: 100%;
+  }
+
+  .btn {
+    width: 100%;
   }
 
   .queue-item {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .site-credit {
+    padding: 20px 16px 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  .board {
+    padding: 12px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+
+  .large-number {
+    font-size: 1.8rem;
+  }
+
+  .next-patient {
+    font-size: 1.1rem;
+  }
+
+  .queue-item {
+    padding: 12px 14px;
   }
 }

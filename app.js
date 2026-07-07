@@ -1,6 +1,7 @@
 let state = {
   patients: [],
   nextQueueNumber: 1,
+  consultationHistory: [],
 };
 
 let updateChannel = null;
@@ -149,10 +150,11 @@ async function loginAdmin(username, password) {
     });
 
     const data = await response.json();
-    if (data?.success) {
+    if (response.ok && data?.success) {
       setAdminAuthenticated(true);
       setAdminView(true);
       fetchState();
+      window.location.reload();
       return true;
     }
 
@@ -173,17 +175,30 @@ function getWaitingPatients() {
 
 function renderPatientBoard() {
   const currentServing = document.getElementById('current-serving');
+  const currentServingHeading = document.getElementById('current-serving-heading');
   const currentServingName = document.getElementById('current-serving-name');
   const nextPatient = document.getElementById('next-patient');
   const waitingList = document.getElementById('waiting-list');
   const queueCount = document.getElementById('queue-count');
+  const spotlightCard = document.querySelector('.spotlight');
 
   const servingPatient = getCurrentServingPatient();
   const nextPatientEntry = getWaitingPatients()[0] || null;
 
+  if (currentServingHeading) {
+    currentServingHeading.hidden = !servingPatient;
+  }
+
+  if (spotlightCard) {
+    spotlightCard.classList.toggle('is-serving', Boolean(servingPatient));
+  }
+
   if (servingPatient) {
     currentServing.textContent = `#${servingPatient.queueNumber}`;
     currentServingName.textContent = `${servingPatient.name} is being consulted now.`;
+  } else if (state.patients.length > 0) {
+    currentServing.textContent = 'Wait for the Doctors Doorbell';
+    currentServingName.textContent = 'A patient is waiting to be called.';
   } else {
     currentServing.textContent = 'Waiting for the first patient';
     currentServingName.textContent = 'No patient is being served yet.';
@@ -219,6 +234,38 @@ function renderPatientBoard() {
 
 
 
+function renderConsultationHistory() {
+  const historyList = document.getElementById('consultation-history');
+  const historyCount = document.getElementById('history-count');
+
+  if (!historyList || !historyCount) {
+    return;
+  }
+
+  historyCount.textContent = `${state.consultationHistory?.length || 0} entries`;
+
+  if (!state.consultationHistory || state.consultationHistory.length === 0) {
+    historyList.innerHTML = '<li class="empty-state">No consultation history yet.</li>';
+    return;
+  }
+
+  historyList.innerHTML = state.consultationHistory
+    .slice()
+    .reverse()
+    .map(
+      (entry) => `
+        <li class="queue-item">
+          <div>
+            <strong>#${entry.queueNumber} — ${entry.name}</strong>
+            <small>${entry.finishedAt || 'Completed'}</small>
+          </div>
+          <span class="badge serving">Completed</span>
+        </li>
+      `,
+    )
+    .join('');
+}
+
 function renderAdminQueue() {
   const patientList = document.getElementById('patient-list');
   const adminCount = document.getElementById('admin-count');
@@ -236,8 +283,10 @@ function renderAdminQueue() {
       (patient) => {
         const actionButtons = [
           `<button class="btn btn-secondary" data-action="edit" data-id="${patient.id}">Edit</button>`,
-          `<button class="btn btn-primary" data-action="serve" data-id="${patient.id}">Serve</button>`,
         ];
+
+        const isCurrentPatient = patient.status === 'serving';
+        actionButtons.push(`<button class="btn btn-primary" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>`);
 
         if (isAdminPage) {
           actionButtons.push(`<button class="btn btn-danger" data-action="delete" data-id="${patient.id}">Delete</button>`);
@@ -295,6 +344,10 @@ function servePatient(id) {
   postAction('serve', { id });
 }
 
+function finishPatient(id) {
+  postAction('finish', { id });
+}
+
 function serveNextPatient() {
   postAction('serve-next');
 }
@@ -310,6 +363,10 @@ function render() {
 
   if (document.getElementById('waiting-list')) {
     renderPatientBoard();
+  }
+
+  if (document.getElementById('consultation-history')) {
+    renderConsultationHistory();
   }
 }
 
@@ -348,6 +405,8 @@ function initAdminPage() {
       deletePatient(id);
     } else if (action === 'serve') {
       servePatient(id);
+    } else if (action === 'finish') {
+      finishPatient(id);
     }
   });
 }

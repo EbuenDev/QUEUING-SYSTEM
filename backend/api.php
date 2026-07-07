@@ -9,12 +9,13 @@ if (session_status() === PHP_SESSION_NONE) {
 
 $stateFile = __DIR__ . '/queue.json';
 $adminUsername = 'admin';
-$adminPassword = 'rhu2admin';
+$adminPassword = 'admin123';
 
 function getDefaultState(): array {
     return [
         'patients' => [],
         'nextQueueNumber' => 1,
+        'consultationHistory' => [],
     ];
 }
 
@@ -38,6 +39,7 @@ function loadState(string $stateFile): array {
     return [
         'patients' => is_array($decoded['patients'] ?? null) ? $decoded['patients'] : [],
         'nextQueueNumber' => max(1, (int) ($decoded['nextQueueNumber'] ?? 1)),
+        'consultationHistory' => is_array($decoded['consultationHistory'] ?? null) ? $decoded['consultationHistory'] : [],
     ];
 }
 
@@ -118,14 +120,25 @@ switch ($action) {
         break;
 
     case 'serve-next':
-        $currentServingPatient = null;
-        foreach ($state['patients'] as &$patient) {
+        $completedPatient = null;
+        foreach ($state['patients'] as $index => $patient) {
             if (($patient['status'] ?? '') === 'serving') {
-                $currentServingPatient = &$patient;
-                $patient['status'] = 'done';
+                $completedPatient = $patient;
+                unset($state['patients'][$index]);
+                break;
             }
         }
-        unset($patient);
+
+        if ($completedPatient !== null) {
+            $state['consultationHistory'][] = [
+                'id' => $completedPatient['id'],
+                'name' => $completedPatient['name'],
+                'queueNumber' => $completedPatient['queueNumber'],
+                'finishedAt' => date('Y-m-d H:i:s'),
+            ];
+        }
+
+        $state['patients'] = array_values($state['patients']);
 
         foreach ($state['patients'] as &$patient) {
             if (($patient['status'] ?? '') === 'waiting') {
@@ -146,12 +159,25 @@ switch ($action) {
             exit;
         }
 
-        foreach ($state['patients'] as &$patient) {
+        $completedPatient = null;
+        foreach ($state['patients'] as $index => $patient) {
             if (($patient['status'] ?? '') === 'serving') {
-                $patient['status'] = 'done';
+                $completedPatient = $patient;
+                unset($state['patients'][$index]);
+                break;
             }
         }
-        unset($patient);
+
+        if ($completedPatient !== null) {
+            $state['consultationHistory'][] = [
+                'id' => $completedPatient['id'],
+                'name' => $completedPatient['name'],
+                'queueNumber' => $completedPatient['queueNumber'],
+                'finishedAt' => date('Y-m-d H:i:s'),
+            ];
+        }
+
+        $state['patients'] = array_values($state['patients']);
 
         foreach ($state['patients'] as &$patient) {
             if (($patient['id'] ?? '') === $id) {
@@ -160,6 +186,37 @@ switch ($action) {
             }
         }
         unset($patient);
+
+        saveState($stateFile, $state);
+        jsonResponse(['success' => true, 'state' => $state]);
+        break;
+
+    case 'finish':
+        $id = (string) ($payload['id'] ?? '');
+        if ($id === '') {
+            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
+            exit;
+        }
+
+        $completedPatient = null;
+        foreach ($state['patients'] as $index => $patient) {
+            if (($patient['id'] ?? '') === $id) {
+                $completedPatient = $patient;
+                unset($state['patients'][$index]);
+                break;
+            }
+        }
+
+        if ($completedPatient !== null) {
+            $state['consultationHistory'][] = [
+                'id' => $completedPatient['id'],
+                'name' => $completedPatient['name'],
+                'queueNumber' => $completedPatient['queueNumber'],
+                'finishedAt' => date('Y-m-d H:i:s'),
+            ];
+        }
+
+        $state['patients'] = array_values($state['patients']);
 
         saveState($stateFile, $state);
         jsonResponse(['success' => true, 'state' => $state]);

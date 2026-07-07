@@ -1,23 +1,25 @@
 {
     "patients": [
         {
-            "id": "f65047f04b754d45",
+            "id": "b6d2509b06451043",
             "name": "asdad",
-            "queueNumber": 1,
-            "status": "done"
-        },
-        {
-            "id": "06798bce906ad208",
-            "name": "asdad",
-            "queueNumber": 2,
-            "status": "done"
-        },
-        {
-            "id": "9797bc20883f6fca",
-            "name": "Mr. Devian",
             "queueNumber": 3,
-            "status": "done"
+            "status": "serving"
         }
     ],
-    "nextQueueNumber": 4
+    "nextQueueNumber": 4,
+    "consultationHistory": [
+        {
+            "id": "c98d21bd737682e4",
+            "name": "Mr. Devian",
+            "queueNumber": 1,
+            "finishedAt": "2026-07-07 16:18:24"
+        },
+        {
+            "id": "2b3d90758a956d2f",
+            "name": "Generic H2 (Embedded)",
+            "queueNumber": 2,
+            "finishedAt": "2026-07-07 16:18:39"
+        }
+    ]
 }
