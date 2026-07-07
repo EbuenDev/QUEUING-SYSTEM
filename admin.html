@@ -16,11 +16,25 @@
           <p>Sana wag na sila mag away.</p>
         </div>
       </div>
-      <a class="nav-link" href="index.html">Patient Display</a>
+      <div class="topbar-actions">
+        <button id="logout-btn" class="nav-link logout-btn" type="button" hidden>Log out</button>
+        <a class="nav-link" href="index.html">Patient Display</a>
+      </div>
     </header>
 
     <main class="board admin-board">
-      <section class="card full-width">
+      <section id="login-card" class="card auth-card">
+        <h2>Admin Login</h2>
+        <p class="muted">Sign in to manage the queue.</p>
+        <form id="admin-login-form" class="auth-form">
+          <input id="admin-username" name="username" type="text" placeholder="Username" autocomplete="username" required />
+          <input id="admin-password" name="password" type="password" placeholder="Password" autocomplete="current-password" required />
+          <button type="submit" class="btn btn-primary">Log In</button>
+        </form>
+        <p id="login-error" class="auth-error" role="alert"></p>
+      </section>
+
+      <section id="admin-panel" class="card full-width" hidden>
         <form id="patient-form" class="patient-form">
           <input id="patient-name" name="name" type="text" placeholder="Patient name" required />
           <button type="submit" class="btn btn-primary">Add Patient</button>

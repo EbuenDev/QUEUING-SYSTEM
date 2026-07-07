@@ -57,12 +57,50 @@ body {
   opacity: 0.9;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .nav-link {
   color: white;
   text-decoration: none;
   background: rgba(255,255,255,0.16);
   padding: 10px 16px;
   border-radius: 999px;
+  border: none;
+  font: inherit;
+}
+
+.logout-btn {
+  background: #facc15;
+  color: #18324b;
+}
+
+.auth-card {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.auth-form input {
+  border: 1px solid #d3e0ee;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 1rem;
+}
+
+.auth-error {
+  min-height: 1.2rem;
+  margin: 10px 0 0;
+  color: #b91c1c;
+  font-weight: 600;
 }
 
 .board {

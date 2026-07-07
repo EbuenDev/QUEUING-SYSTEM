@@ -5,6 +5,57 @@ let state = {
 
 let updateChannel = null;
 
+const ADMIN_CREDENTIALS = {
+  username: 'admin',
+  password: 'admin123',
+};
+
+function isAdminAuthenticated() {
+  try {
+    return sessionStorage.getItem('queue-admin-auth') === 'true';
+  } catch (error) {
+    console.warn('Unable to read admin auth state', error);
+    return false;
+  }
+}
+
+function setAdminAuthenticated(isAuthenticated) {
+  try {
+    if (isAuthenticated) {
+      sessionStorage.setItem('queue-admin-auth', 'true');
+    } else {
+      sessionStorage.removeItem('queue-admin-auth');
+    }
+  } catch (error) {
+    console.warn('Unable to persist admin auth state', error);
+  }
+}
+
+function setAdminView(isAuthenticated) {
+  const loginCard = document.getElementById('login-card');
+  const adminPanel = document.getElementById('admin-panel');
+  const logoutButton = document.getElementById('logout-btn');
+
+  if (loginCard) {
+    loginCard.hidden = isAuthenticated;
+  }
+
+  if (adminPanel) {
+    adminPanel.hidden = !isAuthenticated;
+  }
+
+  if (logoutButton) {
+    logoutButton.hidden = !isAuthenticated;
+  }
+}
+
+function showAdminLoginError(message) {
+  const loginError = document.getElementById('login-error');
+  if (loginError) {
+    loginError.textContent = message;
+  }
+}
+
 function broadcastState(nextState) {
   if (updateChannel) {
     updateChannel.postMessage({ type: 'queue-state-update', state: nextState });
@@ -70,6 +121,12 @@ async function postAction(action, payload = {}) {
     });
 
     const data = await response.json();
+    if (response.status === 401) {
+      setAdminAuthenticated(false);
+      setAdminView(false);
+      return;
+    }
+
     if (data?.success && data.state) {
       state = data.state;
       render();
@@ -77,6 +134,32 @@ async function postAction(action, payload = {}) {
     }
   } catch (error) {
     console.error('Unable to update queue state', error);
+  }
+}
+
+async function loginAdmin(username, password) {
+  try {
+    const response = await fetch('backend/api.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'login', username, password }),
+      cache: 'no-store',
+    });
+
+    const data = await response.json();
+    if (data?.success) {
+      setAdminAuthenticated(true);
+      setAdminView(true);
+      fetchState();
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Unable to login as admin', error);
+    return false;
   }
 }
 
@@ -269,6 +352,43 @@ function initAdminPage() {
   });
 }
 
+function initAdminAuth() {
+  const loginForm = document.getElementById('admin-login-form');
+  const usernameInput = document.getElementById('admin-username');
+  const passwordInput = document.getElementById('admin-password');
+  const logoutButton = document.getElementById('logout-btn');
+
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showAdminLoginError('');
+
+      const username = usernameInput?.value.trim() || '';
+      const password = passwordInput?.value || '';
+      const isAuthenticated = await loginAdmin(username, password);
+
+      if (!isAuthenticated) {
+        showAdminLoginError('Invalid username or password.');
+      } else {
+        loginForm.reset();
+      }
+    });
+  }
+
+  if (logoutButton) {
+    logoutButton.addEventListener('click', () => {
+      setAdminAuthenticated(false);
+      setAdminView(false);
+      showAdminLoginError('');
+      if (usernameInput) {
+        usernameInput.focus();
+      }
+    });
+  }
+
+  setAdminView(isAdminAuthenticated());
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initRealtimeSync();
 
@@ -276,6 +396,12 @@ document.addEventListener('DOMContentLoaded', () => {
     initAdminPage();
   }
 
-  fetchState();
-  setInterval(fetchState, 1000);
+  if (document.getElementById('admin-login-form')) {
+    initAdminAuth();
+  }
+
+  if (isAdminAuthenticated() && document.getElementById('patient-list')) {
+    fetchState();
+    setInterval(fetchState, 1000);
+  }
 });
