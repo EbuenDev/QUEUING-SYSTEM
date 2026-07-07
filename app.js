@@ -56,7 +56,7 @@ function renderPatientBoard() {
 
   if (servingPatient) {
     currentServing.textContent = `#${servingPatient.queueNumber}`;
-    currentServingName.textContent = `${servingPatient.name} is being helped now.`;
+    currentServingName.textContent = `${servingPatient.name} is being consulted now.`;
   } else {
     currentServing.textContent = 'Waiting for the first patient';
     currentServingName.textContent = 'No patient is being served yet.';
