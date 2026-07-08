@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RHU II BHW Panel</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+    <div class="topbar-left">
+    <img class="header-logo" src="src/images/logo.png" alt="RHU II Logo" />
+    <div>
+        <p class="eyebrow">Municipal Health Office</p>
+        <h1>Barangay Health Worker</h1>
+        <p>Add and update patients only.</p>
+    </div>
+    </div>
+    <div class="topbar-actions">
+    <a class="nav-link" href="index.html">Patient Display</a>
+    <a class="nav-link" href="admin.html">Manage Queue</a>
+    </div>
+</header>
+
+<main class="board admin-board">
+    <section class="card full-width">
+    <h2>BHW Patient Panel</h2>
+    <p class="muted">Add a new patient and select their type.</p>
+
+    <form id="bhw-add-form" class="patient-form">
+        <input id="bhw-patient-name" name="name" type="text" placeholder="Patient name" required />
+        <div class="radio-group">
+        <label class="radio-option">
+            <input type="radio" name="patient-type" value="regular" checked />
+            Regular
+        </label>
+        <label class="radio-option">
+            <input type="radio" name="patient-type" value="pwd" />
+            PWD
+        </label>
+        <label class="radio-option">
+            <input type="radio" name="patient-type" value="senior" />
+            Senior Citizen
+        </label>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Patient</button>
+    </form>
+    </section>
+
+    <section class="card full-width">
+    <div class="section-header">
+        <h2>Current Patients</h2>
+        <span id="bhw-count" class="pill">0 patients</span>
+    </div>
+    <ul id="bhw-patient-list" class="queue-list admin-list"></ul>
+    </section>
+</main>
+
+<footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -76,7 +76,7 @@ if (!is_array($payload)) {
 }
 
 $action = $payload['action'] ?? '';
-$requiresAdminAuth = !in_array($action, ['login', 'logout'], true);
+$requiresAdminAuth = !in_array($action, ['login', 'logout', 'add'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
     jsonResponse(['success' => false, 'message' => 'Admin authentication required'], 401);
@@ -103,9 +103,15 @@ switch ($action) {
         break;
     case 'add':
         $name = trim((string) ($payload['name'] ?? ''));
+        $type = strtolower(trim((string) ($payload['type'] ?? 'regular')));
+        $allowedTypes = ['regular', 'pwd', 'senior'];
         if ($name === '') {
             jsonResponse(['success' => false, 'message' => 'Patient name is required'], 400);
             exit;
+        }
+
+        if (!in_array($type, $allowedTypes, true)) {
+            $type = 'regular';
         }
 
         $state['patients'][] = [
@@ -113,6 +119,7 @@ switch ($action) {
             'name' => $name,
             'queueNumber' => $state['nextQueueNumber'],
             'status' => 'waiting',
+            'type' => $type,
         ];
         $state['nextQueueNumber']++;
         saveState($stateFile, $state);
@@ -225,14 +232,21 @@ switch ($action) {
     case 'edit':
         $id = (string) ($payload['id'] ?? '');
         $name = trim((string) ($payload['name'] ?? ''));
+        $type = strtolower(trim((string) ($payload['type'] ?? 'regular')));
+        $allowedTypes = ['regular', 'pwd', 'senior'];
         if ($id === '' || $name === '') {
             jsonResponse(['success' => false, 'message' => 'Patient ID and a new name are required'], 400);
             exit;
         }
 
+        if (!in_array($type, $allowedTypes, true)) {
+            $type = 'regular';
+        }
+
         foreach ($state['patients'] as &$patient) {
             if (($patient['id'] ?? '') === $id) {
                 $patient['name'] = $name;
+                $patient['type'] = $type;
                 break;
             }
         }
