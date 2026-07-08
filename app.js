@@ -20,6 +20,7 @@ function isAdminAuthenticated() {
   }
 }
 
+//This function sets the authentication state of the admin user in sessionStorage. It allows the application to remember whether the admin is logged in or not across page reloads within the same session.
 function setAdminAuthenticated(isAuthenticated) {
   try {
     if (isAuthenticated) {
@@ -32,6 +33,7 @@ function setAdminAuthenticated(isAuthenticated) {
   }
 }
 
+//This function updates the visibility of the admin login form, admin panel, and logout button based on the authentication state of the admin user. It ensures that only authenticated users can access the admin functionalities.
 function setAdminView(isAuthenticated) {
   const loginCard = document.getElementById('login-card');
   const adminPanel = document.getElementById('admin-panel');
@@ -57,6 +59,7 @@ function showAdminLoginError(message) {
   }
 }
 
+//This function broadcasts the current state of the queue to other browser tabs or windows using the BroadcastChannel API and localStorage. It ensures that all instances of the application stay in sync with the latest queue state.
 function broadcastState(nextState) {
   if (updateChannel) {
     updateChannel.postMessage({ type: 'queue-state-update', state: nextState });
@@ -71,6 +74,7 @@ function broadcastState(nextState) {
   }
 }
 
+//This function initializes real-time synchronization of the queue state across multiple browser tabs or windows. It uses the BroadcastChannel API if available, and also listens for changes in localStorage to update the state accordingly.
 function initRealtimeSync() {
   if (typeof BroadcastChannel !== 'undefined') {
     updateChannel = new BroadcastChannel('queue-system-sync');
@@ -103,6 +107,7 @@ function initRealtimeSync() {
   });
 }
 
+//This function fetches the current state of the queue from the backend API and updates the local state accordingly. It also handles any errors that may occur during the fetch operation.
 async function fetchState() {
   try {
     const response = await fetch('backend/api.php', { cache: 'no-store' });
@@ -116,6 +121,7 @@ async function fetchState() {
   }
 }
 
+//This function sends a POST request to the backend API with the specified action and payload. It updates the local state based on the response and handles any errors that may occur during the request.
 async function postAction(action, payload = {}) {
   try {
     const response = await fetch('backend/api.php', {
@@ -126,7 +132,7 @@ async function postAction(action, payload = {}) {
       body: JSON.stringify({ action, ...payload }),
       cache: 'no-store',
     });
-
+//This is to handle the case where the user is not authenticated
     const data = await response.json();
     if (response.status === 401) {
       setAdminAuthenticated(false);
@@ -134,6 +140,7 @@ async function postAction(action, payload = {}) {
       return;
     }
 
+    //this is to ensure that the state is updated after any action is performed, and the UI reflects the latest state.
     if (data?.success && data.state) {
       state = data.state;
       render();
@@ -145,6 +152,7 @@ async function postAction(action, payload = {}) {
   }
 }
 
+// this function simulates an admin login by checking against hardcoded credentials.
 async function loginAdmin(username, password) {
   try {
     const response = await fetch('backend/api.php', {
@@ -180,6 +188,8 @@ function getWaitingPatients() {
   return state.patients.filter((patient) => patient.status === 'waiting');
 }
 
+
+//This function renders the patient board, displaying the current serving patient, the next patient in line, and the waiting list. It updates the UI elements based on the current state of the queue.
 function renderPatientBoard() {
   const currentServing = document.getElementById('current-serving');
   const currentServingHeading = document.getElementById('current-serving-heading');
@@ -226,21 +236,27 @@ function renderPatientBoard() {
 
   waitingList.innerHTML = getWaitingPatients()
     .map(
-      (patient) => `
+      (patient) => {
+        const patientType = patient.type || 'regular';
+        return `
         <li class="queue-item">
           <div>
             <strong>#${patient.queueNumber} — ${patient.name}</strong>
             <small>Waiting for service</small>
           </div>
-          <span class="badge waiting">Waiting</span>
+          <div class="badge-group">
+            <span class="badge waiting">Waiting</span>
+            <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
+          </div>
         </li>
-      `,
+      `;
+      },
     )
     .join('');
 }
 
 
-
+//This function renders the consultation history, displaying a list of completed consultations along with their queue numbers and names. It updates the UI elements based on the current state of the consultation history.
 function renderConsultationHistory() {
   const historyList = document.getElementById('consultation-history');
   const historyCount = document.getElementById('history-count');
@@ -339,6 +355,7 @@ function renderDoctorQueue() {
   patientList.innerHTML = state.patients
     .map((patient) => {
       const patientType = patient.type || 'regular';
+      const isCurrentPatient = patient.status === 'serving';
       return `
       <li class="queue-item">
         <div>
@@ -347,6 +364,9 @@ function renderDoctorQueue() {
             <span class="badge ${patient.status}">${patient.status}</span>
             <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
           </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>
         </div>
       </li>
     `;
@@ -456,7 +476,8 @@ function initAdminPage() {
   if (patientForm && patientNameInput) {
     patientForm.addEventListener('submit', (event) => {
       event.preventDefault();
-      addPatient(patientNameInput.value);
+      const type = patientForm.querySelector('input[name="admin-patient-type"]:checked')?.value || 'regular';
+      addPatient(patientNameInput.value, type);
       patientForm.reset();
     });
   }
@@ -517,6 +538,28 @@ function initBhwPage() {
   }
 }
 
+function initDoctorPage() {
+  const serveNextButton = document.getElementById('doctor-serve-next-btn');
+
+  if (serveNextButton) {
+    serveNextButton.addEventListener('click', serveNextPatient);
+  }
+
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-doctor-action]');
+    if (!button) {
+      return;
+    }
+
+    const { doctorAction, id } = button.dataset;
+    if (doctorAction === 'serve') {
+      servePatient(id);
+    } else if (doctorAction === 'finish') {
+      finishPatient(id);
+    }
+  });
+}
+
 function initAdminAuth() {
   const loginForm = document.getElementById('admin-login-form');
   const usernameInput = document.getElementById('admin-username');
@@ -569,9 +612,14 @@ document.addEventListener('DOMContentLoaded', () => {
     initBhwPage();
   }
 
+  if (document.getElementById('doctor-patient-list')) {
+    initDoctorPage();
+  }
+
   const needsQueueSync = Boolean(
     document.getElementById('patient-list') ||
     document.getElementById('waiting-list') ||
+    document.getElementById('doctor-patient-list') ||
     document.getElementById('consultation-history') ||
     document.getElementById('bhw-patient-list')
   );

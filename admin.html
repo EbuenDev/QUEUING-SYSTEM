@@ -38,6 +38,20 @@
       <section id="admin-panel" class="card full-width" hidden>
         <form id="patient-form" class="patient-form">
           <input id="patient-name" name="name" type="text" placeholder="Patient name" required />
+          <div class="radio-group">
+            <label class="radio-option">
+              <input type="radio" name="admin-patient-type" value="regular" checked />
+              Regular
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="admin-patient-type" value="pwd" />
+              PWD
+            </label>
+            <label class="radio-option">
+              <input type="radio" name="admin-patient-type" value="senior" />
+              Senior Citizen
+            </label>
+          </div>
           <button type="submit" class="btn btn-primary">Add Patient</button>
         </form>
 

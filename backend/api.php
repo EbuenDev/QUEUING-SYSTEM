@@ -76,7 +76,7 @@ if (!is_array($payload)) {
 }
 
 $action = $payload['action'] ?? '';
-$requiresAdminAuth = !in_array($action, ['login', 'logout', 'add'], true);
+$requiresAdminAuth = !in_array($action, ['login', 'logout', 'add', 'serve-next', 'serve', 'finish'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
     jsonResponse(['success' => false, 'message' => 'Admin authentication required'], 401);
