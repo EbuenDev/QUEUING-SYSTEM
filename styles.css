@@ -16,6 +16,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
+  padding-bottom: 72px;
 }
 
 .topbar {
@@ -321,7 +322,20 @@ body {
     color: #0369a1;
   }
 
+.site-credit {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 28px;
+  z-index: 20;
+  width: 100%;
+  transform: none;
+  padding: 0;
+  text-align: center;
+  color: #5f7794;
   background: transparent;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 @media (max-width: 760px) {
@@ -400,7 +414,8 @@ body {
   }
 
   .site-credit {
-    padding: 20px 16px 24px;
+    bottom: 20px;
+    padding: 0;
   }
 }
 
