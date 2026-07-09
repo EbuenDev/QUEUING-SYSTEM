@@ -1,6 +1,16 @@
 {
-    "patients": [],
-    "nextQueueNumber": 11,
+    "patients": [
+        {
+            "id": "f6772505be2024ff",
+            "name": "LODOR",
+            "queueNumber": 11,
+            "status": "waiting",
+            "type": "senior",
+            "patientNumber": "101751920718",
+            "registrationStatus": "not-registered"
+        }
+    ],
+    "nextQueueNumber": 12,
     "consultationHistory": [
         {
             "id": "ea0fc10d86b61ba1",

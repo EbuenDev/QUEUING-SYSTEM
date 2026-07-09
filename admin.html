@@ -48,19 +48,19 @@
             placeholder="Patient number"
             required
           />
-          <div class="radio-group">
-            <label class="radio-option">
-              <input type="radio" name="admin-patient-type" value="regular" checked />
-              Regular
-            </label>
-            <label class="radio-option">
-              <input type="radio" name="admin-patient-type" value="pwd" />
-              PWD
-            </label>
-            <label class="radio-option">
-              <input type="radio" name="admin-patient-type" value="senior" />
-              Senior Citizen
-            </label>
+          <div class="select-row">
+            <select id="admin-patient-type" name="admin-patient-type" required>
+              <option value="regular">Regular</option>
+              <option value="pwd">PWD</option>
+              <option value="senior">Senior Citizen</option>
+              <option value="emergency">Emergency</option>
+            </select>
+            <select id="admin-registration-status" name="registrationStatus" required>
+              <option value="yakap-registered">Yakap Registered</option>
+              <option value="not-registered">Not Registered</option>
+              <option value="no-philhealth">No PhilHealth</option>
+              <option value="other-facilities">Other Facilities</option>
+            </select>
           </div>
           <button type="submit" class="btn btn-primary">Add Patient</button>
         </form>

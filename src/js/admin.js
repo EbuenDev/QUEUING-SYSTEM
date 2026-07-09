@@ -31,7 +31,7 @@
           <li class="queue-item">
             <div>
               <strong>#${patient.queueNumber} - ${QueueApp.escapeHtml(patient.name)}</strong>
-              ${QueueApp.patientBadges(patient, { showPatientNumber: true })}
+              ${QueueApp.patientBadges(patient, { showPatientNumber: true, showRegistrationStatus: true })}
             </div>
             <div class="actions">
               <button class="btn btn-secondary" data-action="edit" data-id="${QueueApp.escapeHtml(patient.id)}">Edit</button>
@@ -90,6 +90,8 @@
     const patientForm = document.getElementById('patient-form');
     const patientNameInput = document.getElementById('patient-name');
     const patientNumberInput = document.getElementById('patient-number');
+    const patientTypeSelect = document.getElementById('admin-patient-type');
+    const registrationStatusSelect = document.getElementById('admin-registration-status');
     const serveNextButton = document.getElementById('serve-next-btn');
     const resetButton = document.getElementById('reset-btn');
 
@@ -99,8 +101,12 @@
 
     patientForm.addEventListener('submit', (event) => {
       event.preventDefault();
-      const type = patientForm.querySelector('input[name="admin-patient-type"]:checked')?.value || 'regular';
-      QueueApp.addPatient(patientNameInput.value, type, patientNumberInput.value);
+      QueueApp.addPatient(
+        patientNameInput.value,
+        patientTypeSelect.value,
+        patientNumberInput.value,
+        registrationStatusSelect.value,
+      );
       patientForm.reset();
     });
 
@@ -123,7 +129,13 @@
 
         const nextName = window.prompt('Update patient name', patient.name);
         if (nextName !== null) {
-          QueueApp.editPatient(id, nextName, patient.type || 'regular', patient.patientNumber || '');
+          QueueApp.editPatient(
+            id,
+            nextName,
+            patient.type || 'regular',
+            patient.patientNumber || '',
+            patient.registrationStatus || '',
+          );
         }
       } else if (action === 'delete') {
         QueueApp.deletePatient(id);

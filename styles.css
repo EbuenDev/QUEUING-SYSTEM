@@ -19,6 +19,12 @@ body {
   padding-bottom: 72px;
 }
 
+button,
+input,
+select {
+  font: inherit;
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -33,6 +39,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .header-logo {
@@ -54,11 +61,13 @@ body {
 .topbar h1 {
   margin: 0;
   font-size: 1.8rem;
+  overflow-wrap: anywhere;
 }
 
 .topbar p {
   margin: 8px 0 0;
   opacity: 0.9;
+  overflow-wrap: anywhere;
 }
 
 .topbar-actions {
@@ -75,6 +84,8 @@ body {
   border-radius: 999px;
   border: none;
   font: inherit;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .logout-btn {
@@ -153,6 +164,7 @@ body {
   font-weight: 700;
   line-height: 1.1;
   margin-bottom: 8px;
+  overflow-wrap: anywhere;
 }
 
 .spotlight.is-serving .large-number {
@@ -169,6 +181,7 @@ body {
 .next-patient {
   font-size: 1.3rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .muted {
@@ -194,16 +207,28 @@ body {
 
 .patient-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
 }
 
-.patient-form input {
-  flex: 1;
+.patient-form input,
+.patient-form select {
+  flex: 1 1 180px;
+  min-width: 0;
   border: 1px solid #d3e0ee;
   border-radius: 12px;
   padding: 12px 14px;
   font-size: 1rem;
+  background: white;
+  color: #18324b;
+}
+
+.select-row {
+  display: flex;
+  flex: 1.4 1 340px;
+  gap: 12px;
+  min-width: 0;
 }
 
 .toolbar {
@@ -257,6 +282,7 @@ body {
 
 .queue-item strong {
   display: block;
+  overflow-wrap: anywhere;
 }
 
 .queue-item small {
@@ -295,6 +321,7 @@ body {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
   .radio-group {
@@ -326,6 +353,7 @@ body {
     gap: 8px;
     flex-wrap: wrap;
     margin-top: 8px;
+    min-width: 0;
   }
 
   .badge.type-regular {
@@ -341,6 +369,16 @@ body {
   .badge.type-senior {
     background: #e0f2fe;
     color: #0369a1;
+  }
+
+  .badge.type-emergency {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+
+  .badge.registration {
+    background: #ede9fe;
+    color: #6d28d9;
   }
 
 .site-credit {
@@ -359,7 +397,39 @@ body {
   pointer-events: none;
 }
 
+@media (max-width: 1024px) {
+  .topbar {
+    padding: 22px 24px;
+  }
+
+  .board {
+    gap: 16px;
+    padding: 20px;
+  }
+
+  .patient-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .patient-form .btn {
+    grid-column: 1 / -1;
+  }
+
+  .select-row {
+    grid-column: 1 / -1;
+  }
+
+  .queue-item {
+    align-items: flex-start;
+  }
+}
+
 @media (max-width: 760px) {
+  body {
+    padding-bottom: 84px;
+  }
+
   .board {
     grid-template-columns: 1fr;
     padding: 16px;
@@ -376,6 +446,7 @@ body {
   .topbar-left {
     align-items: flex-start;
     flex-direction: column;
+    width: 100%;
   }
 
   .header-logo {
@@ -396,10 +467,16 @@ body {
     flex-wrap: wrap;
   }
 
+  .topbar > .nav-link {
+    width: 100%;
+  }
+
   .nav-link {
     display: inline-flex;
     justify-content: center;
     align-items: center;
+    flex: 1 1 150px;
+    white-space: normal;
   }
 
   .card {
@@ -420,8 +497,23 @@ body {
     width: 100%;
   }
 
+  .patient-form {
+    display: flex;
+  }
+
   .patient-form input,
+  .patient-form select,
   .auth-form input {
+    width: 100%;
+  }
+
+  .select-row {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .radio-group {
+    grid-template-columns: 1fr;
     width: 100%;
   }
 
@@ -434,6 +526,19 @@ body {
     align-items: flex-start;
   }
 
+  .queue-item > div {
+    width: 100%;
+  }
+
+  .actions {
+    justify-content: stretch;
+  }
+
+  .badge {
+    max-width: 100%;
+    white-space: normal;
+  }
+
   .site-credit {
     bottom: 20px;
     padding: 0;
@@ -441,6 +546,15 @@ body {
 }
 
 @media (max-width: 480px) {
+  .topbar {
+    padding: 16px 12px;
+  }
+
+  .eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+  }
+
   .board {
     padding: 12px;
   }
@@ -458,7 +572,7 @@ body {
   }
 
   .spotlight.is-serving .large-number {
-    font-size: 1.7rem;
+    font-size: 1.45rem;
   }
 
   .spotlight.is-serving #current-serving-name {
@@ -471,5 +585,39 @@ body {
 
   .queue-item {
     padding: 12px 14px;
+  }
+
+  .badge-group {
+    gap: 6px;
+  }
+
+  .badge {
+    font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .topbar h1 {
+    font-size: 1.15rem;
+  }
+
+  .topbar p,
+  .nav-link,
+  .btn,
+  .patient-form input,
+  .patient-form select {
+    font-size: 0.9rem;
+  }
+
+  .spotlight.is-serving h2 {
+    font-size: 1.75rem;
+  }
+
+  .spotlight.is-serving .large-number {
+    font-size: 1.25rem;
+  }
+
+  .large-number {
+    font-size: 1.45rem;
   }
 }

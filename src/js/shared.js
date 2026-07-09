@@ -60,13 +60,37 @@
       return 'Senior';
     }
 
+    if (type === 'emergency') {
+      return 'Emergency';
+    }
+
     return 'Regular';
+  }
+
+  function getRegistrationStatusLabel(status) {
+    if (status === 'not-registered') {
+      return 'Not Registered';
+    }
+
+    if (status === 'no-philhealth') {
+      return 'No PhilHealth';
+    }
+
+    if (status === 'other-facilities') {
+      return 'Other Facilities';
+    }
+
+    return 'Yakap Registered';
   }
 
   function patientBadges(patient, options = {}) {
     const patientType = patient.type || 'regular';
+    const registrationStatus = patient.registrationStatus || '';
     const patientNumberBadge = options.showPatientNumber && patient.patientNumber
       ? `<span class="badge type-regular">No. ${escapeHtml(patient.patientNumber)}</span>`
+      : '';
+    const registrationBadge = options.showRegistrationStatus && registrationStatus
+      ? `<span class="badge registration">${getRegistrationStatusLabel(registrationStatus)}</span>`
       : '';
 
     return `
@@ -74,6 +98,7 @@
         <span class="badge ${escapeHtml(patient.status)}">${escapeHtml(patient.status)}</span>
         ${patientNumberBadge}
         <span class="badge type-${escapeHtml(patientType)}">${getPatientTypeLabel(patientType)}</span>
+        ${registrationBadge}
       </div>
     `;
   }
@@ -220,17 +245,17 @@
     return String(patientNumber || '').replace(/\D/g, '').slice(0, 12);
   }
 
-  function addPatient(name, type = 'regular', patientNumber = '') {
+  function addPatient(name, type = 'regular', patientNumber = '', registrationStatus = '') {
     const trimmedName = name.trim();
     if (trimmedName) {
-      postAction('add', { name: trimmedName, type, patientNumber: cleanPatientNumber(patientNumber) });
+      postAction('add', { name: trimmedName, type, patientNumber: cleanPatientNumber(patientNumber), registrationStatus });
     }
   }
 
-  function editPatient(id, name, type = 'regular', patientNumber = '') {
+  function editPatient(id, name, type = 'regular', patientNumber = '', registrationStatus = '') {
     const trimmedName = name.trim();
     if (trimmedName) {
-      postAction('edit', { id, name: trimmedName, type, patientNumber: cleanPatientNumber(patientNumber) });
+      postAction('edit', { id, name: trimmedName, type, patientNumber: cleanPatientNumber(patientNumber), registrationStatus });
     }
   }
 
@@ -269,6 +294,7 @@
     finishPatient,
     getCurrentServingPatient,
     getPatientTypeLabel,
+    getRegistrationStatusLabel,
     getState,
     getWaitingPatients,
     initQueuePage,

@@ -60,6 +60,20 @@ function cleanPatientNumber($value): string {
     return substr(preg_replace('/\D/', '', (string) $value), 0, 12);
 }
 
+function cleanPatientType($value): string {
+    $type = strtolower(trim((string) $value));
+    $allowedTypes = ['regular', 'pwd', 'senior', 'emergency'];
+
+    return in_array($type, $allowedTypes, true) ? $type : 'regular';
+}
+
+function cleanRegistrationStatus($value): string {
+    $status = strtolower(trim((string) $value));
+    $allowedStatuses = ['yakap-registered', 'not-registered', 'no-philhealth', 'other-facilities'];
+
+    return in_array($status, $allowedStatuses, true) ? $status : '';
+}
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $state = loadState($stateFile);
 
@@ -107,16 +121,12 @@ switch ($action) {
         break;
     case 'add':
         $name = trim((string) ($payload['name'] ?? ''));
-        $type = strtolower(trim((string) ($payload['type'] ?? 'regular')));
+        $type = cleanPatientType($payload['type'] ?? 'regular');
         $patientNumber = cleanPatientNumber($payload['patientNumber'] ?? '');
-        $allowedTypes = ['regular', 'pwd', 'senior'];
+        $registrationStatus = cleanRegistrationStatus($payload['registrationStatus'] ?? '');
         if ($name === '') {
             jsonResponse(['success' => false, 'message' => 'Patient name is required'], 400);
             exit;
-        }
-
-        if (!in_array($type, $allowedTypes, true)) {
-            $type = 'regular';
         }
 
         $state['patients'][] = [
@@ -126,6 +136,7 @@ switch ($action) {
             'status' => 'waiting',
             'type' => $type,
             'patientNumber' => $patientNumber,
+            'registrationStatus' => $registrationStatus,
         ];
         $state['nextQueueNumber']++;
         saveState($stateFile, $state);
@@ -241,16 +252,12 @@ switch ($action) {
     case 'edit':
         $id = (string) ($payload['id'] ?? '');
         $name = trim((string) ($payload['name'] ?? ''));
-        $type = strtolower(trim((string) ($payload['type'] ?? 'regular')));
+        $type = cleanPatientType($payload['type'] ?? 'regular');
         $patientNumber = cleanPatientNumber($payload['patientNumber'] ?? '');
-        $allowedTypes = ['regular', 'pwd', 'senior'];
+        $registrationStatus = cleanRegistrationStatus($payload['registrationStatus'] ?? '');
         if ($id === '' || $name === '') {
             jsonResponse(['success' => false, 'message' => 'Patient ID and a new name are required'], 400);
             exit;
-        }
-
-        if (!in_array($type, $allowedTypes, true)) {
-            $type = 'regular';
         }
 
         foreach ($state['patients'] as &$patient) {
@@ -258,6 +265,7 @@ switch ($action) {
                 $patient['name'] = $name;
                 $patient['type'] = $type;
                 $patient['patientNumber'] = $patientNumber;
+                $patient['registrationStatus'] = $registrationStatus;
                 break;
             }
         }
