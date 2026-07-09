@@ -38,6 +38,16 @@
       <section id="admin-panel" class="card full-width" hidden>
         <form id="patient-form" class="patient-form">
           <input id="patient-name" name="name" type="text" placeholder="Patient name" required />
+          <input
+            id="patient-number"
+            name="patientNumber"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]{1,12}"
+            maxlength="12"
+            placeholder="Patient number"
+            required
+          />
           <div class="radio-group">
             <label class="radio-option">
               <input type="radio" name="admin-patient-type" value="regular" checked />
@@ -70,6 +80,7 @@
 
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
 
-    <script src="app.js"></script>
+    <script src="src/js/shared.js"></script>
+    <script src="src/js/admin.js"></script>
   </body>
 </html>

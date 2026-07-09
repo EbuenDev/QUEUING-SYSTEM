@@ -128,11 +128,20 @@ body {
 .spotlight {
   background: linear-gradient(135deg, #1d4ed8, #2563eb);
   color: white;
+  display: grid;
+  align-content: center;
+  min-height: 190px;
   transition: background 0.3s ease;
 }
 
 .spotlight.is-serving {
   background: linear-gradient(135deg, #15803d, #16a34a);
+}
+
+.spotlight.is-serving h2 {
+  font-size: 2.8rem;
+  line-height: 1.05;
+  margin: 0 0 12px;
 }
 
 .full-width {
@@ -142,7 +151,19 @@ body {
 .large-number {
   font-size: 2.3rem;
   font-weight: 700;
+  line-height: 1.1;
   margin-bottom: 8px;
+}
+
+.spotlight.is-serving .large-number {
+  font-size: 2.1rem;
+}
+
+.spotlight.is-serving #current-serving-name {
+  font-size: 1.2rem;
+  font-weight: 400;
+  line-height: 1.1;
+  opacity: 1;
 }
 
 .next-patient {
@@ -430,6 +451,18 @@ body {
 
   .large-number {
     font-size: 1.8rem;
+  }
+
+  .spotlight.is-serving h2 {
+    font-size: 2.1rem;
+  }
+
+  .spotlight.is-serving .large-number {
+    font-size: 1.7rem;
+  }
+
+  .spotlight.is-serving #current-serving-name {
+    font-size: 1rem;
   }
 
   .next-patient {

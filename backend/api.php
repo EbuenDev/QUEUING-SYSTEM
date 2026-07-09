@@ -56,6 +56,10 @@ function isAdminAuthenticated(): bool {
     return !empty($_SESSION['admin_authenticated']);
 }
 
+function cleanPatientNumber($value): string {
+    return substr(preg_replace('/\D/', '', (string) $value), 0, 12);
+}
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $state = loadState($stateFile);
 
@@ -104,6 +108,7 @@ switch ($action) {
     case 'add':
         $name = trim((string) ($payload['name'] ?? ''));
         $type = strtolower(trim((string) ($payload['type'] ?? 'regular')));
+        $patientNumber = cleanPatientNumber($payload['patientNumber'] ?? '');
         $allowedTypes = ['regular', 'pwd', 'senior'];
         if ($name === '') {
             jsonResponse(['success' => false, 'message' => 'Patient name is required'], 400);
@@ -120,6 +125,7 @@ switch ($action) {
             'queueNumber' => $state['nextQueueNumber'],
             'status' => 'waiting',
             'type' => $type,
+            'patientNumber' => $patientNumber,
         ];
         $state['nextQueueNumber']++;
         saveState($stateFile, $state);
@@ -141,6 +147,7 @@ switch ($action) {
                 'id' => $completedPatient['id'],
                 'name' => $completedPatient['name'],
                 'queueNumber' => $completedPatient['queueNumber'],
+                'patientNumber' => $completedPatient['patientNumber'] ?? '',
                 'finishedAt' => date('Y-m-d H:i:s'),
             ];
         }
@@ -180,6 +187,7 @@ switch ($action) {
                 'id' => $completedPatient['id'],
                 'name' => $completedPatient['name'],
                 'queueNumber' => $completedPatient['queueNumber'],
+                'patientNumber' => $completedPatient['patientNumber'] ?? '',
                 'finishedAt' => date('Y-m-d H:i:s'),
             ];
         }
@@ -219,6 +227,7 @@ switch ($action) {
                 'id' => $completedPatient['id'],
                 'name' => $completedPatient['name'],
                 'queueNumber' => $completedPatient['queueNumber'],
+                'patientNumber' => $completedPatient['patientNumber'] ?? '',
                 'finishedAt' => date('Y-m-d H:i:s'),
             ];
         }
@@ -233,6 +242,7 @@ switch ($action) {
         $id = (string) ($payload['id'] ?? '');
         $name = trim((string) ($payload['name'] ?? ''));
         $type = strtolower(trim((string) ($payload['type'] ?? 'regular')));
+        $patientNumber = cleanPatientNumber($payload['patientNumber'] ?? '');
         $allowedTypes = ['regular', 'pwd', 'senior'];
         if ($id === '' || $name === '') {
             jsonResponse(['success' => false, 'message' => 'Patient ID and a new name are required'], 400);
@@ -247,6 +257,7 @@ switch ($action) {
             if (($patient['id'] ?? '') === $id) {
                 $patient['name'] = $name;
                 $patient['type'] = $type;
+                $patient['patientNumber'] = $patientNumber;
                 break;
             }
         }
