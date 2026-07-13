@@ -15,6 +15,11 @@ function getDefaultState(): array {
     return [
         'patients' => [],
         'nextQueueNumber' => 1,
+
+        // Determines which category should go first
+        // when alternating Senior and Regular.
+        'nextAlternatingType' => 'senior',
+
         'consultationHistory' => [],
     ];
 }
@@ -37,9 +42,26 @@ function loadState(string $stateFile): array {
     }
 
     return [
-        'patients' => is_array($decoded['patients'] ?? null) ? $decoded['patients'] : [],
-        'nextQueueNumber' => max(1, (int) ($decoded['nextQueueNumber'] ?? 1)),
-        'consultationHistory' => is_array($decoded['consultationHistory'] ?? null) ? $decoded['consultationHistory'] : [],
+    'patients' => is_array($decoded['patients'] ?? null)
+        ? $decoded['patients']
+        : [],
+
+    'nextQueueNumber' => max(
+        1,
+        (int) ($decoded['nextQueueNumber'] ?? 1)
+    ),
+
+    'nextAlternatingType' => in_array(
+        $decoded['nextAlternatingType'] ?? '',
+        ['senior', 'regular'],
+        true
+    )
+        ? $decoded['nextAlternatingType']
+        : 'senior',
+
+    'consultationHistory' => is_array($decoded['consultationHistory'] ?? null)
+        ? $decoded['consultationHistory']
+        : [],
     ];
 }
 
@@ -74,11 +96,131 @@ function cleanRegistrationStatus($value): string {
     return in_array($status, $allowedStatuses, true) ? $status : '';
 }
 
+/**
+ * Generate prioritized queue based on patient categories
+ * 
+ * Priority Order:
+ * 1. Emergency (FIFO)
+ * 2. PWD (FIFO)
+ * 3. Alternate Senior and Regular (FIFO)
+ * 4. Remaining Senior patients
+ * 5. Remaining Regular patients
+ * 
+ * @param array $patients Array of patient records
+ * @return array Prioritized queue with position numbers
+ */
+function generatePrioritizedQueue(
+    array $patients,
+    string $nextAlternatingType = 'senior'
+    ): array {
+    // Filter only waiting patients
+    $waitingPatients = array_filter($patients, function ($patient) {
+        return ($patient['status'] ?? '') === 'waiting';
+    });
+
+    // If no waiting patients, return empty array
+    if (empty($waitingPatients)) {
+        return [];
+    }
+
+    // Separate patients by category (preserving FIFO order)
+    $emergencyQueue = [];
+    $pwdQueue = [];
+    $seniorQueue = [];
+    $regularQueue = [];
+
+    foreach ($waitingPatients as $patient) {
+        $type = $patient['type'] ?? 'regular';
+        switch ($type) {
+            case 'emergency':
+                $emergencyQueue[] = $patient;
+                break;
+            case 'pwd':
+                $pwdQueue[] = $patient;
+                break;
+            case 'senior':
+                $seniorQueue[] = $patient;
+                break;
+            default:
+                $regularQueue[] = $patient;
+                break;
+        }
+    }
+
+    // Generate prioritized queue (sorted by priority, not by queue number)
+    $prioritizedQueue = [];
+    $position = 1;
+
+    // 1. Add Emergency patients (FIFO)
+    foreach ($emergencyQueue as $patient) {
+        $patient['position'] = $position++;
+        $prioritizedQueue[] = $patient;
+    }
+
+    // 2. Add PWD patients (FIFO)
+    foreach ($pwdQueue as $patient) {
+        $patient['position'] = $position++;
+        $prioritizedQueue[] = $patient;
+    }
+
+    // 3. Alternate Senior and Regular patients (FIFO)
+    $seniorIndex = 0;
+    $regularIndex = 0;
+    $seniorCount = count($seniorQueue);
+    $regularCount = count($regularQueue);
+
+    // Alternate between senior and regular while both have patients
+    $turn = $nextAlternatingType;
+
+while ($seniorIndex < $seniorCount && $regularIndex < $regularCount) {
+
+    if ($turn === 'senior') {
+
+        $seniorQueue[$seniorIndex]['position'] = $position++;
+        $prioritizedQueue[] = $seniorQueue[$seniorIndex];
+        $seniorIndex++;
+
+        $turn = 'regular';
+
+    } else {
+
+        $regularQueue[$regularIndex]['position'] = $position++;
+        $prioritizedQueue[] = $regularQueue[$regularIndex];
+        $regularIndex++;
+
+        $turn = 'senior';
+    }
+}
+
+    // 4. Append remaining Senior patients
+    while ($seniorIndex < $seniorCount) {
+        $seniorQueue[$seniorIndex]['position'] = $position++;
+        $prioritizedQueue[] = $seniorQueue[$seniorIndex];
+        $seniorIndex++;
+    }
+
+    // 5. Append remaining Regular patients
+    while ($regularIndex < $regularCount) {
+        $regularQueue[$regularIndex]['position'] = $position++;
+        $prioritizedQueue[] = $regularQueue[$regularIndex];
+        $regularIndex++;
+    }
+
+    return $prioritizedQueue;
+}
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $state = loadState($stateFile);
 
+
+// Generate prioritized queue for waiting patients
+$prioritizedQueue = generatePrioritizedQueue($state['patients'],$state['nextAlternatingType']);
+
 if ($method === 'GET') {
-    jsonResponse(['success' => true, 'state' => $state]);
+    // Return state with prioritized queue
+    $responseState = $state;
+    $responseState['prioritizedQueue'] = $prioritizedQueue;
+    jsonResponse(['success' => true, 'state' => $responseState]);
     exit;
 }
 
@@ -129,6 +271,7 @@ switch ($action) {
             exit;
         }
 
+        // Add new patient to the queue and increment this with the next queue number
         $state['patients'][] = [
             'id' => bin2hex(random_bytes(8)),
             'name' => $name,
@@ -138,16 +281,27 @@ switch ($action) {
             'patientNumber' => $patientNumber,
             'registrationStatus' => $registrationStatus,
         ];
+
+        //This will increment the queue number for the next patient to be added
         $state['nextQueueNumber']++;
         saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        
+        // Generate prioritized queue
+        $prioritizedQueue = generatePrioritizedQueue($state['patients'],$state['nextAlternatingType']);
+        $responseState = $state;
+        $responseState['prioritizedQueue'] = $prioritizedQueue;
+        jsonResponse(['success' => true, 'state' => $responseState]);
         break;
 
     case 'serve-next':
+        $nextPatientId = (string) ($payload['id'] ?? '');
+        
+        // Complete any currently serving patient
         $completedPatient = null;
         foreach ($state['patients'] as $index => $patient) {
             if (($patient['status'] ?? '') === 'serving') {
                 $completedPatient = $patient;
+
                 unset($state['patients'][$index]);
                 break;
             }
@@ -165,16 +319,33 @@ switch ($action) {
 
         $state['patients'] = array_values($state['patients']);
 
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['status'] ?? '') === 'waiting') {
-                $patient['status'] = 'serving';
-                break;
+        // Serve the specific patient passed from frontend (the one at top of displayed queue)
+        if ($nextPatientId !== '') {
+            foreach ($state['patients'] as $index => $patient) {
+                if (($patient['id'] ?? '') === $nextPatientId) {
+                    // Add to consultation history before removing
+                    $state['consultationHistory'][] = [
+                        'id' => $patient['id'],
+                        'name' => $patient['name'],
+                        'queueNumber' => $patient['queueNumber'],
+                        'patientNumber' => $patient['patientNumber'] ?? '',
+                        'finishedAt' => date('Y-m-d H:i:s'),
+                    ];
+                    unset($state['patients'][$index]);
+                    break;
+                }
             }
         }
-        unset($patient);
+
+        $state['patients'] = array_values($state['patients']);
 
         saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        
+        // Generate prioritized queue (served patient is now removed)
+        $prioritizedQueue = generatePrioritizedQueue($state['patients'], $state['nextAlternatingType']);
+        $responseState = $state;
+        $responseState['prioritizedQueue'] = $prioritizedQueue;
+        jsonResponse(['success' => true, 'state' => $responseState]);
         break;
 
     case 'serve':
@@ -184,10 +355,12 @@ switch ($action) {
             exit;
         }
 
+        // Complete any currently serving patient
         $completedPatient = null;
         foreach ($state['patients'] as $index => $patient) {
             if (($patient['status'] ?? '') === 'serving') {
                 $completedPatient = $patient;
+
                 unset($state['patients'][$index]);
                 break;
             }
@@ -205,16 +378,38 @@ switch ($action) {
 
         $state['patients'] = array_values($state['patients']);
 
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $patient['status'] = 'serving';
-                break;
+        // Serve the specific patient - REMOVE them from the queue entirely
+        $prioritizedQueue = generatePrioritizedQueue($state['patients'], $state['nextAlternatingType']);
+        $prioritizedIds = array_column($prioritizedQueue, 'id');
+        
+        // Only serve if the patient is in the prioritized queue (is actually waiting)
+        if (in_array($id, $prioritizedIds, true)) {
+            // Find and REMOVE the patient from the array (not just change status)
+            foreach ($state['patients'] as $index => $patient) {
+                if (($patient['id'] ?? '') === $id) {
+                    // Add to consultation history before removing
+                    $state['consultationHistory'][] = [
+                        'id' => $patient['id'],
+                        'name' => $patient['name'],
+                        'queueNumber' => $patient['queueNumber'],
+                        'patientNumber' => $patient['patientNumber'] ?? '',
+                        'finishedAt' => date('Y-m-d H:i:s'),
+                    ];
+                    unset($state['patients'][$index]);
+                    break;
+                }
             }
         }
-        unset($patient);
+
+        $state['patients'] = array_values($state['patients']);
 
         saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        
+        // Generate prioritized queue (served patient is now removed)
+        $prioritizedQueue = generatePrioritizedQueue($state['patients'], $state['nextAlternatingType']);
+        $responseState = $state;
+        $responseState['prioritizedQueue'] = $prioritizedQueue;
+        jsonResponse(['success' => true, 'state' => $responseState]);
         break;
 
     case 'finish':
@@ -246,7 +441,12 @@ switch ($action) {
         $state['patients'] = array_values($state['patients']);
 
         saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        
+        // Generate prioritized queue
+        $prioritizedQueue = generatePrioritizedQueue($state['patients'], $state['nextAlternatingType']);
+        $responseState = $state;
+        $responseState['prioritizedQueue'] = $prioritizedQueue;
+        jsonResponse(['success' => true, 'state' => $responseState]);
         break;
 
     case 'edit':
@@ -272,7 +472,12 @@ switch ($action) {
         unset($patient);
 
         saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        
+        // Generate prioritized queue
+        $prioritizedQueue = generatePrioritizedQueue($state['patients'], $state['nextAlternatingType']);
+        $responseState = $state;
+        $responseState['prioritizedQueue'] = $prioritizedQueue;
+        jsonResponse(['success' => true, 'state' => $responseState]);
         break;
 
     case 'delete':
@@ -287,13 +492,23 @@ switch ($action) {
         }));
 
         saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        
+        // Generate prioritized queue
+        $prioritizedQueue = generatePrioritizedQueue($state['patients'], $state['nextAlternatingType']);
+        $responseState = $state;
+        $responseState['prioritizedQueue'] = $prioritizedQueue;
+        jsonResponse(['success' => true, 'state' => $responseState]);
         break;
 
     case 'reset':
         $state = getDefaultState();
         saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        
+        // Generate prioritized queue (will be empty)
+        $prioritizedQueue = generatePrioritizedQueue($state['patients'], $state['nextAlternatingType']);
+        $responseState = $state;
+        $responseState['prioritizedQueue'] = $prioritizedQueue;
+        jsonResponse(['success' => true, 'state' => $responseState]);
         break;
 
     default:

@@ -1,86 +1,51 @@
 {
     "patients": [
         {
-            "id": "f6772505be2024ff",
-            "name": "LODOR",
-            "queueNumber": 11,
+            "id": "06a2ec5d6f7cccf5",
+            "name": "A",
+            "queueNumber": 1,
+            "status": "waiting",
+            "type": "regular",
+            "patientNumber": "0",
+            "registrationStatus": "yakap-registered"
+        },
+        {
+            "id": "164c0b2489d7c980",
+            "name": "B",
+            "queueNumber": 2,
+            "status": "waiting",
+            "type": "regular",
+            "patientNumber": "0",
+            "registrationStatus": "yakap-registered"
+        },
+        {
+            "id": "2daf51afc8eb9805",
+            "name": "C",
+            "queueNumber": 3,
+            "status": "waiting",
+            "type": "regular",
+            "patientNumber": "124357652423",
+            "registrationStatus": "yakap-registered"
+        },
+        {
+            "id": "b356b0195c1b2312",
+            "name": "E",
+            "queueNumber": 5,
             "status": "waiting",
             "type": "senior",
-            "patientNumber": "101751920718",
-            "registrationStatus": "not-registered"
+            "patientNumber": "123",
+            "registrationStatus": "yakap-registered"
         }
     ],
-    "nextQueueNumber": 12,
+    "nextQueueNumber": 6,
+    "nextAlternatingType": "senior",
     "consultationHistory": [
         {
-            "id": "ea0fc10d86b61ba1",
-            "name": "TAROBAL",
-            "queueNumber": 1,
-            "patientNumber": "0",
-            "finishedAt": "2026-07-09 08:09:48"
-        },
-        {
-            "id": "84902718d42d2c52",
-            "name": "DESUYO",
-            "queueNumber": 2,
-            "patientNumber": "0",
-            "finishedAt": "2026-07-09 08:10:53"
-        },
-        {
-            "id": "dfd36aee1dd1d963",
-            "name": "MABAHIN",
+            "id": "186689d6435b5da3",
+            "name": "D",
             "queueNumber": 4,
-            "patientNumber": "102551242231",
-            "finishedAt": "2026-07-09 08:18:40"
-        },
-        {
-            "id": "dc9c4e9246ac0a2f",
-            "name": "AGUILAR",
-            "queueNumber": 3,
-            "patientNumber": "102526173888",
-            "finishedAt": "2026-07-09 08:22:45"
-        },
-        {
-            "id": "8a1e1fe09102b6c0",
-            "name": "LODOR",
-            "queueNumber": 5,
-            "patientNumber": "101751920718",
-            "finishedAt": "2026-07-09 08:28:50"
-        },
-        {
-            "id": "abf244c77a8fccc2",
-            "name": "BERDIN",
-            "queueNumber": 6,
-            "patientNumber": "0",
-            "finishedAt": "2026-07-09 08:30:23"
-        },
-        {
-            "id": "aefc839bd2728430",
-            "name": "MARCILLA",
-            "queueNumber": 7,
-            "patientNumber": "0",
-            "finishedAt": "2026-07-09 08:54:59"
-        },
-        {
-            "id": "0d7a8e425d53d7d3",
-            "name": "CUBELO",
-            "queueNumber": 8,
-            "patientNumber": "0",
-            "finishedAt": "2026-07-09 09:38:30"
-        },
-        {
-            "id": "e5d6a11b1de0c870",
-            "name": "DESUYO",
-            "queueNumber": 9,
-            "patientNumber": "0",
-            "finishedAt": "2026-07-09 09:38:32"
-        },
-        {
-            "id": "8871a249c20ac623",
-            "name": "BELO",
-            "queueNumber": 10,
-            "patientNumber": "0",
-            "finishedAt": "2026-07-09 09:41:18"
+            "patientNumber": "124357652423",
+            "finishedAt": "2026-07-12 13:35:11"
         }
     ]
 }
