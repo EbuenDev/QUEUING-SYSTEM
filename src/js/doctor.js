@@ -3,21 +3,27 @@
     const patientList = document.getElementById('doctor-patient-list');
     const adminCount = document.getElementById('admin-count');
 
-    adminCount.textContent = `${state.patients.length} patients`;
+    // Use prioritized queue if available, otherwise fall back to all patients
+    const displayPatients = state.prioritizedQueue || state.patients;
+    const waitingCount = displayPatients.length;
 
-    if (state.patients.length === 0) {
+    adminCount.textContent = `${waitingCount} patient${waitingCount !== 1 ? 's' : ''}`;
+
+    if (waitingCount === 0) {
       patientList.innerHTML = '<li class="empty-state">No patients have been added yet.</li>';
       return;
     }
 
-    patientList.innerHTML = state.patients
+    patientList.innerHTML = displayPatients
       .map((patient) => {
         const isCurrentPatient = patient.status === 'serving';
+        const position = patient.position || waitingCount;
         return `
           <li class="queue-item">
             <div>
-              <strong>#${patient.queueNumber} - ${QueueApp.escapeHtml(patient.name)}</strong>
-              ${QueueApp.patientBadges(patient, { showPatientNumber: true })}
+              <strong>#${position} - ${QueueApp.escapeHtml(patient.name)}</strong>
+              <small class="queue-number">(Queue No. ${patient.queueNumber})</small>
+              ${QueueApp.patientBadges(patient, { showPatientNumber: true, showRegistrationStatus: true })}
             </div>
             <div class="actions">
               <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${QueueApp.escapeHtml(patient.id)}">

@@ -76,6 +76,14 @@ select {
   gap: 10px;
 }
 
+.clock {
+  font-size: 1.8rem;
+  font-weight: 700;
+  opacity: 0.95;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+
 .nav-link {
   color: white;
   text-decoration: none;
@@ -289,6 +297,13 @@ select {
   color: #5780a4;
 }
 
+.queue-item .queue-number {
+  display: block;
+  font-size: 0.85rem;
+  color: #6b7f94;
+  margin-top: 2px;
+}
+
 .badge {
   display: inline-block;
   border-radius: 999px;
@@ -443,6 +458,10 @@ select {
     padding: 20px 16px;
   }
 
+  .clock {
+    font-size: 1.4rem;
+  }
+
   .topbar-left {
     align-items: flex-start;
     flex-direction: column;
@@ -548,6 +567,10 @@ select {
 @media (max-width: 480px) {
   .topbar {
     padding: 16px 12px;
+  }
+
+  .clock {
+    font-size: 1.2rem;
   }
 
   .eyebrow {

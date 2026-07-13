@@ -14,6 +14,8 @@
     return state;
   }
 
+  
+
   function setState(nextState) {
     state = {
       patients: Array.isArray(nextState?.patients) ? nextState.patients : [],
@@ -21,6 +23,7 @@
       consultationHistory: Array.isArray(nextState?.consultationHistory)
         ? nextState.consultationHistory
         : [],
+      prioritizedQueue: Array.isArray(nextState?.prioritizedQueue) ? nextState.prioritizedQueue : [],
     };
 
     render();
@@ -272,7 +275,12 @@
   }
 
   function serveNextPatient() {
-    postAction('serve-next');
+    const prioritizedQueue = state.prioritizedQueue || [];
+    const nextPatient = prioritizedQueue[0] || null;
+    
+    if (nextPatient) {
+      postAction('serve-next', { id: nextPatient.id });
+    }
   }
 
   function resetQueue() {

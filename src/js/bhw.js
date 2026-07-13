@@ -3,23 +3,31 @@
     const patientList = document.getElementById('bhw-patient-list');
     const countLabel = document.getElementById('bhw-count');
 
-    countLabel.textContent = `${state.patients.length} patients`;
+    // Use prioritized queue if available, otherwise fall back to all patients
+    const displayPatients = state.prioritizedQueue || state.patients;
+    const waitingCount = displayPatients.length;
 
-    if (state.patients.length === 0) {
+    countLabel.textContent = `${waitingCount} patient${waitingCount !== 1 ? 's' : ''}`;
+
+    if (waitingCount === 0) {
       patientList.innerHTML = '<li class="empty-state">No patients have been added yet.</li>';
       return;
     }
 
-    patientList.innerHTML = state.patients
+    patientList.innerHTML = displayPatients
       .map(
-        (patient) => `
-          <li class="queue-item">
-            <div>
-              <strong>#${patient.queueNumber} - ${QueueApp.escapeHtml(patient.name)}</strong>
-              ${QueueApp.patientBadges(patient)}
-            </div>
-          </li>
-        `,
+        (patient) => {
+          const position = patient.position || waitingCount;
+          return `
+            <li class="queue-item">
+              <div>
+                <strong>#${position} - ${QueueApp.escapeHtml(patient.name)}</strong>
+                <small class="queue-number">(Queue No. ${patient.queueNumber})</small>
+                ${QueueApp.patientBadges(patient)}
+              </div>
+            </li>
+          `;
+        },
       )
       .join('');
   }
