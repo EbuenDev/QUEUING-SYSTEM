@@ -322,6 +322,78 @@ function closeHistoryEditModal() {
   }
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function printConsultationHistory() {
+  const historyEntries = state.consultationHistory?.slice().reverse() || [];
+  const printWindow = window.open('', '_blank', 'width=900,height=700');
+
+  if (!printWindow) {
+    return;
+  }
+
+  const entryMarkup = historyEntries.length > 0
+    ? historyEntries
+        .map((entry) => `
+          <tr>
+            <td>#${escapeHtml(entry.queueNumber ?? 'N/A')} — ${escapeHtml(entry.name ?? 'Unknown')}</td>
+            <td>${escapeHtml(entry.finishedAt || 'Completed')}</td>
+            <td>${escapeHtml(entry.philHealthId || 'N/A')}</td>
+            <td>${escapeHtml(entry.icdCode || 'N/A')}</td>
+            <td>${escapeHtml(entry.consultationDetails || 'No notes recorded')}</td>
+          </tr>
+        `)
+        .join('')
+    : '<tr><td colspan="5">No consultation history yet.</td></tr>';
+
+  printWindow.document.write(`<!doctype html>
+    <html>
+      <head>
+        <meta charset="UTF-8" />
+        <title>Consultation History Print</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 24px; color: #18324b; }
+          h1 { margin-bottom: 8px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+          th, td { border: 1px solid #d3e0ee; padding: 10px; text-align: left; vertical-align: top; }
+          th { background: #e8f1ff; }
+          .subtitle { color: #5f7794; margin-bottom: 10px; }
+        </style>
+      </head>
+      <body>
+        <h1>Consultation History</h1>
+        <div class="subtitle">RHU II Patient Report</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Patient</th>
+              <th>Date & Time</th>
+              <th>PhilHealth ID</th>
+              <th>ICD Code</th>
+              <th>Consultation Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${entryMarkup}
+          </tbody>
+        </table>
+      </body>
+    </html>`);
+
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+  }, 250);
+}
+
 function renderAdminQueue() {
   const patientList = document.getElementById('patient-list');
   const adminCount = document.getElementById('admin-count');
@@ -642,6 +714,7 @@ function initAdminPage() {
   const cancelEditButton = document.getElementById('cancel-edit-btn');
   const historyEditForm = document.getElementById('edit-history-form');
   const cancelHistoryEditButton = document.getElementById('cancel-history-edit-btn');
+  const printConsultationButton = document.getElementById('print-consultation-btn');
   const serveNextButton = document.getElementById('serve-next-btn');
   const resetButton = document.getElementById('reset-btn');
 
@@ -703,6 +776,10 @@ function initAdminPage() {
 
   if (cancelHistoryEditButton) {
     cancelHistoryEditButton.addEventListener('click', closeHistoryEditModal);
+  }
+
+  if (printConsultationButton) {
+    printConsultationButton.addEventListener('click', printConsultationHistory);
   }
 
   if (serveNextButton) {
