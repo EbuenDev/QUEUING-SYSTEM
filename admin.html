@@ -13,7 +13,7 @@
         <div>
           <p class="eyebrow">Municipal Health Office</p>
           <h1>Rural Health Unit II</h1>
-          <p>Sana wag na sila mag away.</p>
+          <p>mag away kayo.</p>
         </div>
       </div>
       <div class="topbar-actions">
@@ -37,23 +37,47 @@
 
       <section id="admin-panel" class="card full-width" hidden>
         <form id="patient-form" class="patient-form">
-          <input id="patient-name" name="name" type="text" placeholder="Patient name" required />
-          <div class="radio-group">
-            <label class="radio-option">
-              <input type="radio" name="admin-patient-type" value="regular" checked />
-              Regular
-            </label>
-            <label class="radio-option">
-              <input type="radio" name="admin-patient-type" value="pwd" />
-              PWD
-            </label>
-            <label class="radio-option">
-              <input type="radio" name="admin-patient-type" value="senior" />
-              Senior Citizen
-            </label>
-          </div>
+          <input id="patient-name" name="name" type="text" placeholder="Full Name" required />
+          <input id="patient-philhealth-id" name="philHealthId" type="text" placeholder="PhilHealth ID" />
+          <select id="patient-status" name="patientStatus" aria-label="Patient Status">
+            <option value="regular">REGULAR</option>
+            <option value="senior">SENIOR</option>
+            <option value="pwd">PWD</option>
+            <option value="emergency">EMERGENCY</option>
+          </select>
+          <select id="philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
+            <option value="no-philhealth">NO PHILHEALTH</option>
+            <option value="registered">REGISTERED</option>
+            <option value="not-registered">NOT REGISTERED</option>
+            <option value="other-facility">OTHER FACILITY</option>
+          </select>
           <button type="submit" class="btn btn-primary">Add Patient</button>
         </form>
+
+        <div id="edit-patient-modal" class="card edit-modal" hidden>
+          <h3>Edit Patient</h3>
+          <form id="edit-patient-form" class="patient-form">
+            <input id="edit-patient-id" type="hidden" />
+            <input id="edit-patient-name" name="name" type="text" placeholder="Full Name" required />
+            <input id="edit-patient-philhealth-id" name="philHealthId" type="text" placeholder="PhilHealth ID" />
+            <select id="edit-patient-status" name="patientStatus" aria-label="Patient Status">
+              <option value="regular">REGULAR</option>
+              <option value="senior">SENIOR</option>
+              <option value="pwd">PWD</option>
+              <option value="emergency">EMERGENCY</option>
+            </select>
+            <select id="edit-philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
+              <option value="no-philhealth">NO PHILHEALTH</option>
+              <option value="registered">REGISTERED</option>
+              <option value="not-registered">NOT REGISTERED</option>
+              <option value="other-facility">OTHER FACILITY</option>
+            </select>
+            <div class="toolbar">
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+              <button type="button" id="cancel-edit-btn" class="btn btn-secondary">Cancel</button>
+            </div>
+          </form>
+        </div>
 
         <div class="toolbar">
           <button id="serve-next-btn" class="btn btn-primary">Serve Next</button>
@@ -65,6 +89,25 @@
           <span id="admin-count" class="pill">0 patients</span>
         </div>
         <ul id="patient-list" class="queue-list admin-list"></ul>
+
+        <div id="edit-history-modal" class="card edit-modal" hidden>
+          <h3>Edit Recent Checkup</h3>
+          <form id="edit-history-form" class="patient-form">
+            <input id="edit-history-id" type="hidden" />
+            <input id="edit-history-icd-code" name="icdCode" type="text" placeholder="ICD Code" required />
+            <textarea id="edit-history-consultation" name="consultationDetails" rows="4" placeholder="Consultation details"></textarea>
+            <div class="toolbar">
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+              <button type="button" id="cancel-history-edit-btn" class="btn btn-secondary">Cancel</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="section-header">
+          <h2>Consultation History</h2>
+          <span id="history-count" class="pill">0 entries</span>
+        </div>
+        <ul id="consultation-history" class="queue-list"></ul>
       </section>
     </main>
 

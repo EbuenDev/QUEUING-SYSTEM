@@ -18,16 +18,17 @@
         </div>
       </div>
       <div class="topbar-actions">
-        <a class="nav-link" href="bhw.html">BHW Panel</a>
-        <a class="nav-link" href="admin.html">Manage Queue</a>
+        <div id="live-clock" class="live-clock" aria-live="polite">--:-- --</div>
       </div>
     </header>
 
     <main class="board">
       <section class="card spotlight">
         <h2 id="current-serving-heading" hidden>Currently Serving</h2>
-        <div id="current-serving" class="large-number">Waiting for the first patient</div>
-        <p id="current-serving-name" class="muted">No patient is being served yet.</p>
+        <div class="spotlight-title-row">
+          <div id="current-serving" class="large-number">Waiting for the first patient</div>
+          <div id="current-serving-name" class="spotlight-name">No patient is being served yet.</div>
+        </div>
       </section>
 
       <section class="card">

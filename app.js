@@ -212,7 +212,7 @@ function renderPatientBoard() {
 
   if (servingPatient) {
     currentServing.textContent = `#${servingPatient.queueNumber}`;
-    currentServingName.textContent = `${servingPatient.name} is being consulted now.`;
+    currentServingName.textContent = servingPatient.name;
   } else if (state.patients.length > 0) {
     currentServing.textContent = 'Wait for the Doctors Doorbell';
     currentServingName.textContent = 'A patient is waiting to be called.';
@@ -281,12 +281,45 @@ function renderConsultationHistory() {
           <div>
             <strong>#${entry.queueNumber} — ${entry.name}</strong>
             <small>${entry.finishedAt || 'Completed'}</small>
+            <small>PH ID: ${entry.philHealthId || 'N/A'}</small>
+            <small>ICD: ${entry.icdCode || 'N/A'}</small>
+            <small>Consultation: ${entry.consultationDetails || 'No notes recorded'}</small>
           </div>
-          <span class="badge serving">Completed</span>
+          <div class="actions">
+            <button class="btn btn-secondary" type="button" data-action="edit-history" data-id="${entry.id || ''}">Edit</button>
+          </div>
         </li>
       `,
     )
     .join('');
+}
+
+function openHistoryEditModal(id) {
+  const entry = state.consultationHistory.find((item) => (item.id || '') === id);
+  if (!entry) {
+    return;
+  }
+
+  const modal = document.getElementById('edit-history-modal');
+  const historyIdInput = document.getElementById('edit-history-id');
+  const icdCodeInput = document.getElementById('edit-history-icd-code');
+  const consultationInput = document.getElementById('edit-history-consultation');
+
+  if (!modal || !historyIdInput || !icdCodeInput || !consultationInput) {
+    return;
+  }
+
+  historyIdInput.value = entry.id || '';
+  icdCodeInput.value = entry.icdCode || '';
+  consultationInput.value = entry.consultationDetails || '';
+  modal.hidden = false;
+}
+
+function closeHistoryEditModal() {
+  const modal = document.getElementById('edit-history-modal');
+  if (modal) {
+    modal.hidden = true;
+  }
 }
 
 function renderAdminQueue() {
@@ -308,13 +341,15 @@ function renderAdminQueue() {
   patientList.innerHTML = state.patients
     .map(
       (patient) => {
-        const patientType = patient.type || 'regular';
+        const patientType = patient.patientStatus || patient.type || 'regular';
+        const philHealthStatus = patient.philHealthStatus || 'no-philhealth';
         const actionButtons = [];
 
         if (isAdminPage) {
           actionButtons.push(`<button class="btn btn-secondary" data-action="edit" data-id="${patient.id}">Edit</button>`);
           const isCurrentPatient = patient.status === 'serving';
           actionButtons.push(`<button class="btn btn-primary" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>`);
+          actionButtons.push(`<button class="btn btn-warning" data-action="skip" data-id="${patient.id}">Skip</button>`);
           actionButtons.push(`<button class="btn btn-danger" data-action="delete" data-id="${patient.id}">Delete</button>`);
         }
 
@@ -324,8 +359,10 @@ function renderAdminQueue() {
               <strong>#${patient.queueNumber} — ${patient.name}</strong>
               <div class="badge-group">
                 <span class="badge ${patient.status}">${patient.status}</span>
-                <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
+                <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
+                <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
               </div>
+              <small>PH ID: ${patient.philHealthId || 'N/A'}</small>
             </div>
             <div class="actions">
               ${actionButtons.join('')}
@@ -339,13 +376,92 @@ function renderAdminQueue() {
 
 function renderDoctorQueue() {
   const patientList = document.getElementById('doctor-patient-list');
-  const adminCount = document.getElementById('admin-count');
+  const patientCountLabel = document.getElementById('doctor-patient-count');
+  const currentPatientCard = document.getElementById('doctor-current-patient');
+  const nextPatientCard = document.getElementById('doctor-next-patient');
 
-  if (!patientList || !adminCount) {
+  if (!patientList || !patientCountLabel) {
     return;
   }
 
-  adminCount.textContent = `${state.patients.length} patients`;
+  const activeField = document.activeElement;
+  const activeFieldId = activeField?.id;
+  const activeFieldSelectionStart = activeField?.selectionStart ?? activeField?.selectionEnd ?? null;
+  const activeFieldSelectionEnd = activeField?.selectionEnd ?? activeField?.selectionStart ?? null;
+  const draftIcdCode = document.getElementById('doctor-icd-code')?.value || '';
+  const draftConsultationDetails = document.getElementById('doctor-consultation-note')?.value || '';
+
+  patientCountLabel.textContent = `${state.patients.length} patients in queue`;
+
+  const servingPatient = getCurrentServingPatient();
+  const nextPatient = state.patients.find((patient) => patient.status === 'waiting') || null;
+
+  if (currentPatientCard) {
+    if (servingPatient) {
+      currentPatientCard.innerHTML = `
+        <div class="doctor-current-patient-details">
+          <strong>#${servingPatient.queueNumber} — ${servingPatient.name}</strong>
+          <div class="badge-group">
+            <span class="badge serving">Serving</span>
+            <span class="badge type-${servingPatient.patientStatus || servingPatient.type || 'regular'}">${(servingPatient.patientStatus || servingPatient.type || 'regular') === 'pwd' ? 'PWD' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'senior' ? 'Senior' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
+          </div>
+          <small>Queue #${servingPatient.queueNumber}</small>
+          <small>PH ID: ${servingPatient.philHealthId || 'N/A'}</small>
+        </div>
+        <div class="doctor-note-fields">
+          <label class="field-label" for="doctor-icd-code">ICD Code</label>
+          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${draftIcdCode || servingPatient.icdCode || ''}" />
+          <label class="field-label" for="doctor-consultation-note">Consultation Details</label>
+          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient">${draftConsultationDetails || servingPatient.consultationDetails || ''}</textarea>
+        </div>
+      `;
+    } else {
+      currentPatientCard.innerHTML = `
+        <div class="doctor-current-patient-details">
+          <strong>No patient is being served yet.</strong>
+          <div class="badge-group">
+            <span class="badge waiting">Waiting</span>
+          </div>
+          <small>Queue # — Full Name</small>
+          <small>PH ID: N/A</small>
+        </div>
+        <div class="doctor-note-fields">
+          <label class="field-label" for="doctor-icd-code">ICD Code</label>
+          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${draftIcdCode}" disabled />
+          <label class="field-label" for="doctor-consultation-note">Consultation Details</label>
+          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient" disabled>${draftConsultationDetails}</textarea>
+        </div>
+      `;
+    }
+  }
+
+  if (activeFieldId) {
+    const restoredField = document.getElementById(activeFieldId);
+    if (restoredField) {
+      restoredField.focus();
+      if (typeof activeFieldSelectionStart === 'number' && typeof activeFieldSelectionEnd === 'number') {
+        restoredField.setSelectionRange(activeFieldSelectionStart, activeFieldSelectionEnd);
+      }
+    }
+  }
+
+  if (nextPatientCard) {
+    if (nextPatient) {
+      nextPatientCard.innerHTML = `
+        <strong>#${nextPatient.queueNumber} — ${nextPatient.name}</strong>
+        <div class="badge-group">
+          <span class="badge waiting">Waiting</span>
+          <span class="badge type-${nextPatient.patientStatus || nextPatient.type || 'regular'}">${(nextPatient.patientStatus || nextPatient.type || 'regular') === 'pwd' ? 'PWD' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'senior' ? 'Senior' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
+        </div>
+        <small>PH ID: ${nextPatient.philHealthId || 'N/A'}</small>
+      `;
+    } else {
+      nextPatientCard.innerHTML = `
+        <strong>No queue yet.</strong>
+        <small>Awaiting the next patient.</small>
+      `;
+    }
+  }
 
   if (state.patients.length === 0) {
     patientList.innerHTML = '<li class="empty-state">No patients have been added yet.</li>';
@@ -354,7 +470,7 @@ function renderDoctorQueue() {
 
   patientList.innerHTML = state.patients
     .map((patient) => {
-      const patientType = patient.type || 'regular';
+      const patientType = patient.patientStatus || patient.type || 'regular';
       const isCurrentPatient = patient.status === 'serving';
       return `
       <li class="queue-item">
@@ -362,11 +478,14 @@ function renderDoctorQueue() {
           <strong>#${patient.queueNumber} — ${patient.name}</strong>
           <div class="badge-group">
             <span class="badge ${patient.status}">${patient.status}</span>
-            <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
+            <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
           </div>
+          <small>PH ID: ${patient.philHealthId || 'N/A'}</small>
         </div>
         <div class="actions">
           <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>
+          <button class="btn btn-warning" data-doctor-action="skip" data-id="${patient.id}">Skip</button>
+          <button class="btn btn-secondary" data-doctor-action="recall" data-id="${patient.id}">Recall</button>
         </div>
       </li>
     `;
@@ -407,22 +526,41 @@ function renderBhwQueue() {
     .join('');
 }
 
-function addPatient(name, type = 'regular') {
-  const trimmedName = name.trim();
+function addPatient(fields) {
+  const trimmedName = (fields.name || '').trim();
+  const philHealthId = (fields.philHealthId || '').trim();
+  const patientStatus = fields.patientStatus || 'regular';
+  const philHealthStatus = fields.philHealthStatus || 'no-philhealth';
+
   if (!trimmedName) {
     return;
   }
 
-  postAction('add', { name: trimmedName, type });
+  postAction('add', {
+    name: trimmedName,
+    philHealthId,
+    patientStatus,
+    philHealthStatus,
+  });
 }
 
-function editPatient(id, name, type = 'regular') {
-  const trimmedName = name.trim();
+function editPatient(id, fields) {
+  const trimmedName = (fields.name || '').trim();
+  const philHealthId = (fields.philHealthId || '').trim();
+  const patientStatus = fields.patientStatus || 'regular';
+  const philHealthStatus = fields.philHealthStatus || 'no-philhealth';
+
   if (!trimmedName) {
     return;
   }
 
-  postAction('edit', { id, name: trimmedName, type });
+  postAction('edit', {
+    id,
+    name: trimmedName,
+    philHealthId,
+    patientStatus,
+    philHealthStatus,
+  });
 }
 
 function deletePatient(id) {
@@ -434,7 +572,28 @@ function servePatient(id) {
 }
 
 function finishPatient(id) {
-  postAction('finish', { id });
+  const consultationNoteInput = document.getElementById('doctor-consultation-note');
+  const icdCodeInput = document.getElementById('doctor-icd-code');
+  const consultationDetails = consultationNoteInput?.value || '';
+  const icdCode = icdCodeInput?.value || '';
+
+  if (consultationNoteInput) {
+    consultationNoteInput.value = '';
+  }
+
+  if (icdCodeInput) {
+    icdCodeInput.value = '';
+  }
+
+  postAction('finish', { id, consultationDetails, icdCode });
+}
+
+function skipPatient(id) {
+  postAction('skip', { id });
+}
+
+function recallPatient(id) {
+  postAction('recall', { id });
 }
 
 function serveNextPatient() {
@@ -470,16 +629,80 @@ function render() {
 function initAdminPage() {
   const patientForm = document.getElementById('patient-form');
   const patientNameInput = document.getElementById('patient-name');
+  const philHealthIdInput = document.getElementById('patient-philhealth-id');
+  const patientStatusSelect = document.getElementById('patient-status');
+  const philHealthStatusSelect = document.getElementById('philhealth-status');
+  const editModal = document.getElementById('edit-patient-modal');
+  const editPatientForm = document.getElementById('edit-patient-form');
+  const editPatientIdInput = document.getElementById('edit-patient-id');
+  const editPatientNameInput = document.getElementById('edit-patient-name');
+  const editPhilHealthIdInput = document.getElementById('edit-patient-philhealth-id');
+  const editPatientStatusSelect = document.getElementById('edit-patient-status');
+  const editPhilHealthStatusSelect = document.getElementById('edit-philhealth-status');
+  const cancelEditButton = document.getElementById('cancel-edit-btn');
+  const historyEditForm = document.getElementById('edit-history-form');
+  const cancelHistoryEditButton = document.getElementById('cancel-history-edit-btn');
   const serveNextButton = document.getElementById('serve-next-btn');
   const resetButton = document.getElementById('reset-btn');
 
   if (patientForm && patientNameInput) {
     patientForm.addEventListener('submit', (event) => {
       event.preventDefault();
-      const type = patientForm.querySelector('input[name="admin-patient-type"]:checked')?.value || 'regular';
-      addPatient(patientNameInput.value, type);
+      addPatient({
+        name: patientNameInput.value,
+        philHealthId: philHealthIdInput?.value || '',
+        patientStatus: patientStatusSelect?.value || 'regular',
+        philHealthStatus: philHealthStatusSelect?.value || 'no-philhealth',
+      });
       patientForm.reset();
     });
+  }
+
+  if (editPatientForm) {
+    editPatientForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const id = editPatientIdInput?.value || '';
+      if (!id) {
+        return;
+      }
+
+      editPatient(id, {
+        name: editPatientNameInput?.value || '',
+        philHealthId: editPhilHealthIdInput?.value || '',
+        patientStatus: editPatientStatusSelect?.value || 'regular',
+        philHealthStatus: editPhilHealthStatusSelect?.value || 'no-philhealth',
+      });
+
+      if (editModal) {
+        editModal.hidden = true;
+      }
+    });
+  }
+
+  if (cancelEditButton && editModal) {
+    cancelEditButton.addEventListener('click', () => {
+      editModal.hidden = true;
+    });
+  }
+
+  if (historyEditForm) {
+    historyEditForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const historyId = document.getElementById('edit-history-id')?.value || '';
+      const icdCode = document.getElementById('edit-history-icd-code')?.value || '';
+      const consultationDetails = document.getElementById('edit-history-consultation')?.value || '';
+
+      if (!historyId) {
+        return;
+      }
+
+      postAction('edit-history', { id: historyId, icdCode, consultationDetails });
+      closeHistoryEditModal();
+    });
+  }
+
+  if (cancelHistoryEditButton) {
+    cancelHistoryEditButton.addEventListener('click', closeHistoryEditModal);
   }
 
   if (serveNextButton) {
@@ -503,23 +726,31 @@ function initAdminPage() {
         return;
       }
 
-      const nextName = window.prompt('Update patient name', patient.name);
-      if (nextName === null) {
-        return;
-      }
+      const editModal = document.getElementById('edit-patient-modal');
+      const editPatientIdInput = document.getElementById('edit-patient-id');
+      const editPatientNameInput = document.getElementById('edit-patient-name');
+      const editPhilHealthIdInput = document.getElementById('edit-patient-philhealth-id');
+      const editPatientStatusSelect = document.getElementById('edit-patient-status');
+      const editPhilHealthStatusSelect = document.getElementById('edit-philhealth-status');
 
-      const trimmedName = nextName.trim();
-      if (!trimmedName) {
-        return;
+      if (editModal && editPatientIdInput && editPatientNameInput && editPhilHealthIdInput && editPatientStatusSelect && editPhilHealthStatusSelect) {
+        editPatientIdInput.value = patient.id;
+        editPatientNameInput.value = patient.name || '';
+        editPhilHealthIdInput.value = patient.philHealthId || '';
+        editPatientStatusSelect.value = patient.patientStatus || patient.type || 'regular';
+        editPhilHealthStatusSelect.value = patient.philHealthStatus || 'no-philhealth';
+        editModal.hidden = false;
       }
-
-      postAction('edit', { id, name: trimmedName, type: patient.type || 'regular' });
+    } else if (action === 'edit-history') {
+      openHistoryEditModal(id);
     } else if (action === 'delete') {
       deletePatient(id);
     } else if (action === 'serve') {
       servePatient(id);
     } else if (action === 'finish') {
       finishPatient(id);
+    } else if (action === 'skip') {
+      skipPatient(id);
     }
   });
 }
@@ -540,24 +771,102 @@ function initBhwPage() {
 
 function initDoctorPage() {
   const serveNextButton = document.getElementById('doctor-serve-next-btn');
+  const recallButton = document.getElementById('doctor-recall-btn');
+  const skipButton = document.getElementById('doctor-skip-btn');
+  const finishButton = document.getElementById('doctor-finish-btn');
+  const historyEditForm = document.getElementById('edit-history-form');
+  const cancelHistoryEditButton = document.getElementById('cancel-history-edit-btn');
 
   if (serveNextButton) {
     serveNextButton.addEventListener('click', serveNextPatient);
   }
 
+  if (recallButton) {
+    recallButton.addEventListener('click', () => {
+      const currentServing = getCurrentServingPatient();
+      if (currentServing) {
+        recallPatient(currentServing.id);
+      }
+    });
+  }
+
+  if (skipButton) {
+    skipButton.addEventListener('click', () => {
+      const currentServing = getCurrentServingPatient();
+      if (currentServing) {
+        skipPatient(currentServing.id);
+      }
+    });
+  }
+
+  if (finishButton) {
+    finishButton.addEventListener('click', () => {
+      const currentServing = getCurrentServingPatient();
+      if (currentServing) {
+        finishPatient(currentServing.id);
+      }
+    });
+  }
+
+  if (historyEditForm) {
+    historyEditForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const historyId = document.getElementById('edit-history-id')?.value || '';
+      const icdCode = document.getElementById('edit-history-icd-code')?.value || '';
+      const consultationDetails = document.getElementById('edit-history-consultation')?.value || '';
+
+      if (!historyId) {
+        return;
+      }
+
+      postAction('edit-history', { id: historyId, icdCode, consultationDetails });
+      closeHistoryEditModal();
+    });
+  }
+
+  if (cancelHistoryEditButton) {
+    cancelHistoryEditButton.addEventListener('click', closeHistoryEditModal);
+  }
+
   document.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-doctor-action]');
-    if (!button) {
+    const button = event.target.closest('button[data-action]');
+    if (button) {
+      const { action, id } = button.dataset;
+      if (action === 'edit-history') {
+        openHistoryEditModal(id);
+      }
+    }
+
+    const doctorButton = event.target.closest('button[data-doctor-action]');
+    if (!doctorButton) {
       return;
     }
 
-    const { doctorAction, id } = button.dataset;
+    const { doctorAction, id } = doctorButton.dataset;
     if (doctorAction === 'serve') {
       servePatient(id);
     } else if (doctorAction === 'finish') {
       finishPatient(id);
+    } else if (doctorAction === 'skip') {
+      skipPatient(id);
+    } else if (doctorAction === 'recall') {
+      recallPatient(id);
     }
   });
+}
+
+function updateLiveClock() {
+  const liveClock = document.getElementById('live-clock');
+  if (!liveClock) {
+    return;
+  }
+
+  const now = new Date();
+  const hours = now.getHours() % 12 || 12;
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const seconds = String(now.getSeconds()).padStart(2, '0');
+  const meridiem = now.getHours() >= 12 ? 'PM' : 'AM';
+  liveClock.textContent = `${hours}:${minutes}:${seconds} ${meridiem}`;
 }
 
 function initAdminAuth() {
@@ -599,6 +908,8 @@ function initAdminAuth() {
 
 document.addEventListener('DOMContentLoaded', () => {
   initRealtimeSync();
+  updateLiveClock();
+  setInterval(updateLiveClock, 1000);
 
   if (document.getElementById('patient-list')) {
     initAdminPage();

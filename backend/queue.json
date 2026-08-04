@@ -1,41 +1,39 @@
 {
     "patients": [
         {
-            "id": "c9905a43da598c16",
-            "name": "Mr. Devian",
-            "queueNumber": 1,
-            "status": "serving",
-            "type": "pwd"
-        },
-        {
-            "id": "2fa82b745ecac787",
-            "name": "asd",
-            "queueNumber": 2,
-            "status": "waiting",
-            "type": "regular"
-        },
-        {
-            "id": "255df3d4672e4f70",
-            "name": "asdasd",
+            "id": "bbc1729a008b94eb",
+            "name": "asdasdasdasd",
+            "philHealthId": "1231231231231231321",
             "queueNumber": 3,
-            "status": "waiting",
-            "type": "regular"
-        },
-        {
-            "id": "483b5bed69072a14",
-            "name": "asdasdasda",
-            "queueNumber": 4,
-            "status": "waiting",
-            "type": "regular"
-        },
-        {
-            "id": "404429e7ff7d48e4",
-            "name": "asdasdasdawd",
-            "queueNumber": 5,
-            "status": "waiting",
-            "type": "regular"
+            "status": "serving",
+            "patientStatus": "regular",
+            "type": "regular",
+            "philHealthStatus": "no-philhealth"
         }
     ],
-    "nextQueueNumber": 6,
-    "consultationHistory": []
+    "nextQueueNumber": 4,
+    "consultationHistory": [
+        {
+            "id": "1c2a287a314d0537",
+            "name": "ebuen",
+            "queueNumber": 1,
+            "philHealthId": "",
+            "patientStatus": "regular",
+            "philHealthStatus": "no-philhealth",
+            "icdCode": "A00",
+            "consultationDetails": "ito na tama",
+            "finishedAt": "2026-08-04 14:51:08"
+        },
+        {
+            "id": "daa1858e3cfefe1d",
+            "name": "ebuen",
+            "queueNumber": 2,
+            "philHealthId": "a1231231",
+            "patientStatus": "regular",
+            "philHealthStatus": "no-philhealth",
+            "icdCode": "mali man",
+            "consultationDetails": "udb1231",
+            "finishedAt": "2026-08-04 14:56:24"
+        }
+    ]
 }

@@ -21,18 +21,53 @@
 
 <main class="board admin-board">
     <section class="card full-width">
+        <div class="section-header">
+            <h2>Current Patient</h2>
+            <span id="doctor-patient-count" class="pill">0 patients in queue</span>
+        </div>
+        <div id="doctor-current-patient" class="queue-item doctor-current-patient-card">
+            <strong>No patient is being served yet.</strong>
+            <div class="badge-group">
+                <span class="badge waiting">Waiting</span>
+            </div>
+            <small>Queue # — Full Name</small>
+            <small>PH ID: N/A</small>
+        </div>
         <div class="toolbar">
-            <button id="doctor-serve-next-btn" class="btn btn-primary" type="button">Serve Next</button>
+            <button id="doctor-serve-next-btn" class="btn btn-primary" type="button">Next Patient</button>
+            <button id="doctor-recall-btn" class="btn btn-secondary" type="button">Recall</button>
+            <button id="doctor-skip-btn" class="btn btn-warning" type="button">Skip</button>
+            <button id="doctor-finish-btn" class="btn btn-danger" type="button">Finish</button>
+        </div>
+
+        <div class="section-header">
+            <h2>Next Patient in Line</h2>
+        </div>
+        <div id="doctor-next-patient" class="queue-item">
+            <strong>No queue yet.</strong>
+            <small>Awaiting the next patient.</small>
         </div>
 
         <div class="section-header">
             <h2>Patient List</h2>
-            <span id="admin-count" class="pill">0 patients</span>
         </div>
         <ul id="doctor-patient-list" class="queue-list admin-list"></ul>
         </section>
         <section class="card full-width">
-            <div class="section-header">
+<div id="edit-history-modal" class="card edit-modal" hidden>
+            <h3>Edit Recent Checkup</h3>
+            <form id="edit-history-form" class="patient-form">
+                <input id="edit-history-id" type="hidden" />
+                <input id="edit-history-icd-code" name="icdCode" type="text" placeholder="ICD Code" required />
+                <textarea id="edit-history-consultation" name="consultationDetails" rows="4" placeholder="Consultation details"></textarea>
+                <div class="toolbar">
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="button" id="cancel-history-edit-btn" class="btn btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="section-header">
                 <h2>Consultation History</h2>
                 <span id="history-count" class="pill">0 entries</span>
             </div>
