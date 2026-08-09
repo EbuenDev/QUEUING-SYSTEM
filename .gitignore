@@ -1,0 +1,17 @@
+# Environment variables
+.env
+.env.*
+
+# Patient/queue data
+backend/queue.json
+
+# Cookies / session data
+cookies.txt
+queue_cookie.txt
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
