@@ -15,3 +15,14 @@ queue_cookie.txt
 # OS files
 .DS_Store
 Thumbs.db
+
+
+# Sensitive configuration
+backend/config.php
+
+# Patient/queue data
+backend/queue.json
+
+# Cookies
+cookies.txt
+queue_cookie.txt

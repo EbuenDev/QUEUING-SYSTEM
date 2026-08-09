@@ -8,9 +8,12 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 $stateFile = __DIR__ . '/queue.json';
-$adminUsername = 'admin';
-$adminPassword = 'admin123';
-$legacyAdminPassword = 'admin';
+
+$config = require __DIR__ . '/config.php';
+
+$adminUsername = $config['admin_username'];
+$adminPassword = $config['admin_password'];
+$legacyAdminPass = $config['legacy_admin_password'];
 
 function getDefaultState(): array {
     return [
