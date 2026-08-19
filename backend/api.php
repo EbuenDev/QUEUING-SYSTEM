@@ -7,58 +7,15 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+require __DIR__ . '/queue-helpers.php';
+
 $stateFile = __DIR__ . '/queue.json';
 
 $config = require __DIR__ . '/config.php';
 
 $adminUsername = $config['admin_username'];
 $adminPassword = $config['admin_password'];
-$legacyAdminPass = $config['legacy_admin_password'];
-
-function getDefaultState(): array {
-    return [
-        'patients' => [],
-        'nextQueueNumber' => 1,
-        'consultationHistory' => [],
-    ];
-}
-
-function loadState(string $stateFile): array {
-    if (!file_exists($stateFile)) {
-        $initialState = getDefaultState();
-        file_put_contents($stateFile, json_encode($initialState, JSON_PRETTY_PRINT));
-        return $initialState;
-    }
-
-    $contents = file_get_contents($stateFile);
-    if ($contents === false || trim($contents) === '') {
-        return getDefaultState();
-    }
-
-    $decoded = json_decode($contents, true);
-    if (!is_array($decoded)) {
-        return getDefaultState();
-    }
-
-    return [
-        'patients' => is_array($decoded['patients'] ?? null) ? $decoded['patients'] : [],
-        'nextQueueNumber' => max(1, (int) ($decoded['nextQueueNumber'] ?? 1)),
-        'consultationHistory' => is_array($decoded['consultationHistory'] ?? null) ? $decoded['consultationHistory'] : [],
-    ];
-}
-
-function saveState(string $stateFile, array $state): void {
-    file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT), LOCK_EX);
-}
-
-function jsonResponse(array $payload, int $status = 200): void {
-    http_response_code($status);
-    echo json_encode($payload);
-}
-
-function isAdminAuthenticated(): bool {
-    return !empty($_SESSION['admin_authenticated']);
-}
+$legacyAdminPassword = $config['legacy_admin_password'];
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $state = loadState($stateFile);
@@ -69,7 +26,7 @@ if ($method === 'GET') {
 }
 
 if ($method !== 'POST') {
-    jsonResponse(['success' => false, 'message' => 'Method not allowed'], 405);
+    jsonError('Method not allowed', 405);
     exit;
 }
 
@@ -83,7 +40,7 @@ $action = $payload['action'] ?? '';
 $requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
-    jsonResponse(['success' => false, 'message' => 'Admin authentication required'], 401);
+    jsonError('Admin authentication required', 401);
     exit;
 }
 
@@ -91,15 +48,15 @@ switch ($action) {
     case 'login':
         $username = trim((string) ($payload['username'] ?? ''));
         $password = (string) ($payload['password'] ?? '');
-        $isValidLogin = ($username === $adminUsername && $password === $adminPassword)
-            || ($username === $adminUsername && $password === $legacyAdminPassword);
+        $isValidLogin = $username === $adminUsername
+            && ($password === $adminPassword || $password === $legacyAdminPassword);
 
         if ($isValidLogin) {
             $_SESSION['admin_authenticated'] = true;
             jsonResponse(['success' => true, 'message' => 'Login successful']);
         } else {
             $_SESSION['admin_authenticated'] = false;
-            jsonResponse(['success' => false, 'message' => 'Invalid username or password'], 401);
+            jsonError('Invalid username or password', 401);
         }
         break;
 
@@ -107,280 +64,123 @@ switch ($action) {
         unset($_SESSION['admin_authenticated']);
         jsonResponse(['success' => true, 'message' => 'Logged out']);
         break;
+
     case 'add':
-        $name = trim((string) ($payload['name'] ?? ''));
-        $philHealthId = trim((string) ($payload['philHealthId'] ?? ''));
-        $type = strtolower(trim((string) ($payload['patientStatus'] ?? $payload['type'] ?? 'regular')));
-        $philHealthStatus = strtolower(trim((string) ($payload['philHealthStatus'] ?? 'no-philhealth')));
-        $allowedTypes = ['regular', 'pwd', 'senior', 'emergency'];
-        $allowedPhilHealthStatus = ['no-philhealth', 'registered', 'not-registered', 'other-facility'];
-
-        if ($name === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient name is required'], 400);
+        $fields = normalizePatientInput($payload);
+        if ($fields['name'] === '') {
+            jsonError('Patient name is required');
             exit;
-        }
-
-        if (!in_array($type, $allowedTypes, true)) {
-            $type = 'regular';
-        }
-
-        if (!in_array($philHealthStatus, $allowedPhilHealthStatus, true)) {
-            $philHealthStatus = 'no-philhealth';
         }
 
         $state['patients'][] = [
             'id' => bin2hex(random_bytes(8)),
-            'name' => $name,
-            'philHealthId' => $philHealthId,
+            'name' => $fields['name'],
+            'philHealthId' => $fields['philHealthId'],
             'queueNumber' => $state['nextQueueNumber'],
             'status' => 'waiting',
-            'patientStatus' => $type,
-            'type' => $type,
-            'philHealthStatus' => $philHealthStatus,
+            'patientStatus' => $fields['type'],
+            'type' => $fields['type'],
+            'philHealthStatus' => $fields['philHealthStatus'],
         ];
         $state['nextQueueNumber']++;
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        respondWithState($stateFile, $state);
         break;
 
     case 'serve-next':
-        $completedPatient = null;
-        foreach ($state['patients'] as $index => $patient) {
-            if (($patient['status'] ?? '') === 'serving') {
-                $completedPatient = $patient;
-                unset($state['patients'][$index]);
-                break;
-            }
-        }
-
-        if ($completedPatient !== null) {
-            $state['consultationHistory'][] = [
-                'id' => $completedPatient['id'],
-                'name' => $completedPatient['name'],
-                'queueNumber' => $completedPatient['queueNumber'],
-                'finishedAt' => date('Y-m-d H:i:s'),
-            ];
-        }
-
-        $state['patients'] = array_values($state['patients']);
-
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['status'] ?? '') === 'waiting') {
-                $patient['status'] = 'serving';
-                break;
-            }
-        }
-        unset($patient);
-
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        completeServingPatient($state);
+        promoteFirstPatientWithStatus($state, 'waiting', 'serving');
+        respondWithState($stateFile, $state);
         break;
 
     case 'serve':
-        $id = (string) ($payload['id'] ?? '');
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
-            exit;
-        }
-
-        $completedPatient = null;
-        foreach ($state['patients'] as $index => $patient) {
-            if (($patient['status'] ?? '') === 'serving') {
-                $completedPatient = $patient;
-                unset($state['patients'][$index]);
-                break;
-            }
-        }
-
-        if ($completedPatient !== null) {
-            $state['consultationHistory'][] = [
-                'id' => $completedPatient['id'],
-                'name' => $completedPatient['name'],
-                'queueNumber' => $completedPatient['queueNumber'],
-                'finishedAt' => date('Y-m-d H:i:s'),
-            ];
-        }
-
-        $state['patients'] = array_values($state['patients']);
-
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $patient['status'] = 'serving';
-                break;
-            }
-        }
-        unset($patient);
-
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        $id = requireId($payload);
+        completeServingPatient($state);
+        setPatientStatus($state, $id, 'serving');
+        respondWithState($stateFile, $state);
         break;
 
     case 'finish':
-        $id = (string) ($payload['id'] ?? '');
-        $icdCode = trim((string) ($payload['icdCode'] ?? ''));
-        $consultationDetails = trim((string) ($payload['consultationDetails'] ?? ''));
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
-            exit;
-        }
-
-        $completedPatient = null;
-        foreach ($state['patients'] as $index => $patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $completedPatient = $patient;
-                unset($state['patients'][$index]);
-                break;
-            }
-        }
+        $id = requireId($payload);
+        $completedPatient = takePatientBy($state, 'id', $id);
 
         if ($completedPatient !== null) {
-            $state['consultationHistory'][] = [
-                'id' => $completedPatient['id'],
-                'name' => $completedPatient['name'],
-                'queueNumber' => $completedPatient['queueNumber'],
+            appendConsultationEntry($state, $completedPatient, [
                 'philHealthId' => $completedPatient['philHealthId'] ?? '',
                 'patientStatus' => $completedPatient['patientStatus'] ?? ($completedPatient['type'] ?? 'regular'),
                 'philHealthStatus' => $completedPatient['philHealthStatus'] ?? 'no-philhealth',
-                'icdCode' => $icdCode,
-                'consultationDetails' => $consultationDetails,
-                'finishedAt' => date('Y-m-d H:i:s'),
-            ];
+                'icdCode' => trim((string) ($payload['icdCode'] ?? '')),
+                'consultationDetails' => trim((string) ($payload['consultationDetails'] ?? '')),
+            ]);
         }
 
-        $state['patients'] = array_values($state['patients']);
-
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        respondWithState($stateFile, $state);
         break;
 
     case 'skip':
-        $id = (string) ($payload['id'] ?? '');
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
-            exit;
-        }
-
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $patient['status'] = 'skipped';
-                break;
-            }
-        }
-        unset($patient);
-
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        $id = requireId($payload);
+        setPatientStatus($state, $id, 'skipped');
+        respondWithState($stateFile, $state);
         break;
 
     case 'recall':
-        $id = (string) ($payload['id'] ?? '');
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
-            exit;
-        }
-
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $patient['status'] = 'waiting';
-                break;
-            }
-        }
-        unset($patient);
-
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        $id = requireId($payload);
+        setPatientStatus($state, $id, 'waiting');
+        respondWithState($stateFile, $state);
         break;
 
     case 'edit-history':
-        $id = (string) ($payload['id'] ?? '');
+        $id = requireId($payload, 'History ID is required');
         $icdCode = trim((string) ($payload['icdCode'] ?? ''));
         $consultationDetails = trim((string) ($payload['consultationDetails'] ?? ''));
 
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'History ID is required'], 400);
-            exit;
-        }
-
-        $historyUpdated = false;
-        foreach ($state['consultationHistory'] as &$entry) {
-            if (($entry['id'] ?? '') === $id) {
-                $entry['icdCode'] = $icdCode;
-                $entry['consultationDetails'] = $consultationDetails;
-                $historyUpdated = true;
-                break;
-            }
-        }
-        unset($entry);
+        $historyUpdated = updateHistoryEntry($state, $id, function (array &$entry) use ($icdCode, $consultationDetails): void {
+            $entry['icdCode'] = $icdCode;
+            $entry['consultationDetails'] = $consultationDetails;
+        });
 
         if (!$historyUpdated) {
-            jsonResponse(['success' => false, 'message' => 'History entry not found'], 404);
+            jsonError('History entry not found', 404);
             exit;
         }
 
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        respondWithState($stateFile, $state);
         break;
 
     case 'edit':
         $id = (string) ($payload['id'] ?? '');
-        $name = trim((string) ($payload['name'] ?? ''));
-        $philHealthId = trim((string) ($payload['philHealthId'] ?? ''));
-        $type = strtolower(trim((string) ($payload['patientStatus'] ?? $payload['type'] ?? 'regular')));
-        $philHealthStatus = strtolower(trim((string) ($payload['philHealthStatus'] ?? 'no-philhealth')));
-        $allowedTypes = ['regular', 'pwd', 'senior', 'emergency'];
-        $allowedPhilHealthStatus = ['no-philhealth', 'registered', 'not-registered', 'other-facility'];
+        $fields = normalizePatientInput($payload);
 
-        if ($id === '' || $name === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID and a new name are required'], 400);
+        if ($id === '' || $fields['name'] === '') {
+            jsonError('Patient ID and a new name are required');
             exit;
         }
 
-        if (!in_array($type, $allowedTypes, true)) {
-            $type = 'regular';
-        }
+        updatePatientBy($state, 'id', $id, function (array &$patient) use ($fields): void {
+            $patient['name'] = $fields['name'];
+            $patient['philHealthId'] = $fields['philHealthId'];
+            $patient['patientStatus'] = $fields['type'];
+            $patient['type'] = $fields['type'];
+            $patient['philHealthStatus'] = $fields['philHealthStatus'];
+        });
 
-        if (!in_array($philHealthStatus, $allowedPhilHealthStatus, true)) {
-            $philHealthStatus = 'no-philhealth';
-        }
-
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $patient['name'] = $name;
-                $patient['philHealthId'] = $philHealthId;
-                $patient['patientStatus'] = $type;
-                $patient['type'] = $type;
-                $patient['philHealthStatus'] = $philHealthStatus;
-                break;
-            }
-        }
-        unset($patient);
-
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        respondWithState($stateFile, $state);
         break;
 
     case 'delete':
-        $id = (string) ($payload['id'] ?? '');
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
-            exit;
-        }
-
+        $id = requireId($payload);
         $state['patients'] = array_values(array_filter($state['patients'], function ($patient) use ($id) {
             return ($patient['id'] ?? '') !== $id;
         }));
 
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        respondWithState($stateFile, $state);
         break;
 
     case 'reset':
         $state = getDefaultState();
-        saveState($stateFile, $state);
-        jsonResponse(['success' => true, 'state' => $state]);
+        respondWithState($stateFile, $state);
         break;
 
     default:
-        jsonResponse(['success' => false, 'message' => 'Unknown action'], 400);
+        jsonError('Unknown action');
         break;
 }

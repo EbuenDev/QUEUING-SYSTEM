@@ -6,10 +6,7 @@ let state = {
 
 let updateChannel = null;
 
-const ADMIN_CREDENTIALS = {
-  username: 'admin',
-  password: 'admin123',
-};
+const API_ENDPOINT = 'backend/api.php';
 
 function isAdminAuthenticated() {
   try {
@@ -35,21 +32,9 @@ function setAdminAuthenticated(isAuthenticated) {
 
 //This function updates the visibility of the admin login form, admin panel, and logout button based on the authentication state of the admin user. It ensures that only authenticated users can access the admin functionalities.
 function setAdminView(isAuthenticated) {
-  const loginCard = document.getElementById('login-card');
-  const adminPanel = document.getElementById('admin-panel');
-  const logoutButton = document.getElementById('logout-btn');
-
-  if (loginCard) {
-    loginCard.hidden = isAuthenticated;
-  }
-
-  if (adminPanel) {
-    adminPanel.hidden = !isAuthenticated;
-  }
-
-  if (logoutButton) {
-    logoutButton.hidden = !isAuthenticated;
-  }
+  setElementHidden('login-card', isAuthenticated);
+  setElementHidden('admin-panel', !isAuthenticated);
+  setElementHidden('logout-btn', !isAuthenticated);
 }
 
 function showAdminLoginError(message) {
@@ -80,8 +65,7 @@ function initRealtimeSync() {
     updateChannel = new BroadcastChannel('queue-system-sync');
     updateChannel.addEventListener('message', (event) => {
       if (event.data?.type === 'queue-state-update' && event.data.state) {
-        state = event.data.state;
-        render();
+        applyState(event.data.state);
       }
     });
   }
@@ -95,8 +79,7 @@ function initRealtimeSync() {
       try {
         const payload = JSON.parse(event.newValue);
         if (payload?.state) {
-          state = payload.state;
-          render();
+          applyState(payload.state);
         }
       } catch (error) {
         console.warn('Unable to sync queue state from storage', error);
@@ -107,14 +90,33 @@ function initRealtimeSync() {
   });
 }
 
+//This function replaces the local state with the given one and repaints every widget on the page.
+function applyState(nextState) {
+  state = nextState;
+  render();
+}
+
+//This function performs a request against the backend API. Passing a body turns the request into a JSON POST.
+async function requestApi(body = null) {
+  const options = { cache: 'no-store' };
+
+  if (body) {
+    options.method = 'POST';
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(API_ENDPOINT, options);
+  const data = await response.json();
+  return { response, data };
+}
+
 //This function fetches the current state of the queue from the backend API and updates the local state accordingly. It also handles any errors that may occur during the fetch operation.
 async function fetchState() {
   try {
-    const response = await fetch('backend/api.php', { cache: 'no-store' });
-    const data = await response.json();
+    const { data } = await requestApi();
     if (data?.success && data.state) {
-      state = data.state;
-      render();
+      applyState(data.state);
     }
   } catch (error) {
     console.error('Unable to load queue state', error);
@@ -124,16 +126,9 @@ async function fetchState() {
 //This function sends a POST request to the backend API with the specified action and payload. It updates the local state based on the response and handles any errors that may occur during the request.
 async function postAction(action, payload = {}) {
   try {
-    const response = await fetch('backend/api.php', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action, ...payload }),
-      cache: 'no-store',
-    });
-//This is to handle the case where the user is not authenticated
-    const data = await response.json();
+    const { response, data } = await requestApi({ action, ...payload });
+
+    //This is to handle the case where the user is not authenticated
     if (response.status === 401) {
       setAdminAuthenticated(false);
       setAdminView(false);
@@ -142,8 +137,7 @@ async function postAction(action, payload = {}) {
 
     //this is to ensure that the state is updated after any action is performed, and the UI reflects the latest state.
     if (data?.success && data.state) {
-      state = data.state;
-      render();
+      applyState(data.state);
       broadcastState(data.state);
       await fetchState();
     }
@@ -152,19 +146,10 @@ async function postAction(action, payload = {}) {
   }
 }
 
-// this function simulates an admin login by checking against hardcoded credentials.
+// this function authenticates the admin against the backend API.
 async function loginAdmin(username, password) {
   try {
-    const response = await fetch('backend/api.php', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ action: 'login', username, password }),
-      cache: 'no-store',
-    });
-
-    const data = await response.json();
+    const { response, data } = await requestApi({ action: 'login', username, password });
     if (response.ok && data?.success) {
       setAdminAuthenticated(true);
       setAdminView(true);
@@ -227,31 +212,19 @@ function renderPatientBoard() {
     nextPatient.textContent = 'No queue yet';
   }
 
-  queueCount.textContent = `${getWaitingPatients().length} patients`;
+  const waitingPatients = getWaitingPatients();
+  queueCount.textContent = `${waitingPatients.length} patients`;
 
-  if (getWaitingPatients().length === 0) {
-    waitingList.innerHTML = '<li class="empty-state">The waiting list is empty.</li>';
+  if (waitingPatients.length === 0) {
+    waitingList.innerHTML = renderEmptyState(EMPTY_STATE_MESSAGES.waitingList);
     return;
   }
 
-  waitingList.innerHTML = getWaitingPatients()
-    .map(
-      (patient) => {
-        const patientType = patient.type || 'regular';
-        return `
-        <li class="queue-item">
-          <div>
-            <strong>#${patient.queueNumber} — ${patient.name}</strong>
-            <small>Waiting for service</small>
-          </div>
-          <div class="badge-group">
-            <span class="badge waiting">Waiting</span>
-            <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
-          </div>
-        </li>
-      `;
-      },
-    )
+  waitingList.innerHTML = waitingPatients
+    .map((patient) => renderQueueItem([
+      renderPatientDetails(patient, { notes: ['Waiting for service'] }),
+      renderBadgeGroup([renderStatusBadge('waiting'), renderTypeBadge(patient)]),
+    ]))
     .join('');
 }
 
@@ -268,29 +241,29 @@ function renderConsultationHistory() {
   historyCount.textContent = `${state.consultationHistory?.length || 0} entries`;
 
   if (!state.consultationHistory || state.consultationHistory.length === 0) {
-    historyList.innerHTML = '<li class="empty-state">No consultation history yet.</li>';
+    historyList.innerHTML = renderEmptyState(EMPTY_STATE_MESSAGES.history);
     return;
   }
 
-  historyList.innerHTML = state.consultationHistory
-    .slice()
-    .reverse()
-    .map(
-      (entry) => `
-        <li class="queue-item">
-          <div>
-            <strong>#${entry.queueNumber} — ${entry.name}</strong>
-            <small>${entry.finishedAt || 'Completed'}</small>
-            <small>PH ID: ${entry.philHealthId || 'N/A'}</small>
-            <small>ICD: ${entry.icdCode || 'N/A'}</small>
-            <small>Consultation: ${entry.consultationDetails || 'No notes recorded'}</small>
-          </div>
-          <div class="actions">
-            <button class="btn btn-secondary" type="button" data-action="edit-history" data-id="${entry.id || ''}">Edit</button>
-          </div>
-        </li>
-      `,
-    )
+  historyList.innerHTML = getHistoryEntriesNewestFirst()
+    .map((entry) => renderQueueItem([
+      renderPatientDetails(entry, {
+        notes: [
+          entry.finishedAt || 'Completed',
+          `PH ID: ${entry.philHealthId || 'N/A'}`,
+          `ICD: ${entry.icdCode || 'N/A'}`,
+          `Consultation: ${entry.consultationDetails || 'No notes recorded'}`,
+        ],
+      }),
+      renderActions([
+        renderActionButton('Edit', {
+          variant: 'btn-secondary',
+          attribute: 'data-action',
+          action: 'edit-history',
+          id: entry.id || '',
+        }),
+      ]),
+    ]))
     .join('');
 }
 
@@ -300,39 +273,22 @@ function openHistoryEditModal(id) {
     return;
   }
 
-  const modal = document.getElementById('edit-history-modal');
-  const historyIdInput = document.getElementById('edit-history-id');
-  const icdCodeInput = document.getElementById('edit-history-icd-code');
-  const consultationInput = document.getElementById('edit-history-consultation');
-
-  if (!modal || !historyIdInput || !icdCodeInput || !consultationInput) {
-    return;
-  }
-
-  historyIdInput.value = entry.id || '';
-  icdCodeInput.value = entry.icdCode || '';
-  consultationInput.value = entry.consultationDetails || '';
-  modal.hidden = false;
+  setElementValue('edit-history-id', entry.id || '');
+  setElementValue('edit-history-icd-code', entry.icdCode || '');
+  setElementValue('edit-history-consultation', entry.consultationDetails || '');
+  setElementHidden('edit-history-modal', false);
 }
 
 function closeHistoryEditModal() {
-  const modal = document.getElementById('edit-history-modal');
-  if (modal) {
-    modal.hidden = true;
-  }
+  setElementHidden('edit-history-modal', true);
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+function getHistoryEntriesNewestFirst() {
+  return state.consultationHistory?.slice().reverse() || [];
 }
 
 function printConsultationHistory() {
-  const historyEntries = state.consultationHistory?.slice().reverse() || [];
+  const historyEntries = getHistoryEntriesNewestFirst();
   const printWindow = window.open('', '_blank', 'width=900,height=700');
 
   if (!printWindow) {
@@ -351,7 +307,7 @@ function printConsultationHistory() {
           </tr>
         `)
         .join('')
-    : '<tr><td colspan="5">No consultation history yet.</td></tr>';
+    : `<tr><td colspan="5">${EMPTY_STATE_MESSAGES.history}</td></tr>`;
 
   printWindow.document.write(`<!doctype html>
     <html>
@@ -406,44 +362,49 @@ function renderAdminQueue() {
   adminCount.textContent = `${state.patients.length} patients`;
 
   if (state.patients.length === 0) {
-    patientList.innerHTML = '<li class="empty-state">No patients have been added yet.</li>';
+    patientList.innerHTML = renderEmptyState(EMPTY_STATE_MESSAGES.patients);
     return;
   }
 
   patientList.innerHTML = state.patients
-    .map(
-      (patient) => {
-        const patientType = patient.patientStatus || patient.type || 'regular';
-        const philHealthStatus = patient.philHealthStatus || 'no-philhealth';
-        const actionButtons = [];
-
-        if (isAdminPage) {
-          actionButtons.push(`<button class="btn btn-secondary" data-action="edit" data-id="${patient.id}">Edit</button>`);
-          const isCurrentPatient = patient.status === 'serving';
-          actionButtons.push(`<button class="btn btn-primary" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>`);
-          actionButtons.push(`<button class="btn btn-warning" data-action="skip" data-id="${patient.id}">Skip</button>`);
-          actionButtons.push(`<button class="btn btn-danger" data-action="delete" data-id="${patient.id}">Delete</button>`);
-        }
-
-        return `
-          <li class="queue-item">
-            <div>
-              <strong>#${patient.queueNumber} — ${patient.name}</strong>
-              <div class="badge-group">
-                <span class="badge ${patient.status}">${patient.status}</span>
-                <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
-                <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
-              </div>
-              <small>PH ID: ${patient.philHealthId || 'N/A'}</small>
-            </div>
-            <div class="actions">
-              ${actionButtons.join('')}
-            </div>
-          </li>
-        `;
-      },
-    )
+    .map((patient) => renderQueueItem([
+      renderPatientDetails(patient, {
+        badges: [renderStatusBadge(patient.status), renderTypeBadge(patient), renderPhilHealthBadge(patient)],
+        showPhilHealthId: true,
+      }),
+      renderActions(isAdminPage ? [
+        renderQueueActionButton(patient, 'data-action', 'edit'),
+        renderQueueActionButton(patient, 'data-action', 'serve'),
+        renderQueueActionButton(patient, 'data-action', 'skip'),
+        renderQueueActionButton(patient, 'data-action', 'delete'),
+      ] : []),
+    ]))
     .join('');
+}
+
+// Buttons that act on a queue item. The admin page listens on data-action, the
+// doctor page on data-doctor-action, but the markup is otherwise identical.
+function renderQueueActionButton(patient, attribute, action) {
+  const isCurrentPatient = patient.status === 'serving';
+  const buttonsByAction = {
+    edit: { label: 'Edit', variant: 'btn-secondary', action: 'edit' },
+    serve: {
+      label: isCurrentPatient ? 'Done' : 'Serve',
+      variant: 'btn-primary',
+      action: isCurrentPatient ? 'finish' : 'serve',
+    },
+    skip: { label: 'Skip', variant: 'btn-warning', action: 'skip' },
+    recall: { label: 'Recall', variant: 'btn-secondary', action: 'recall' },
+    delete: { label: 'Delete', variant: 'btn-danger', action: 'delete' },
+  };
+
+  const button = buttonsByAction[action];
+  return renderActionButton(button.label, {
+    variant: button.variant,
+    attribute,
+    action: button.action,
+    id: patient.id,
+  });
 }
 
 function renderDoctorQueue() {
@@ -472,13 +433,10 @@ function renderDoctorQueue() {
     if (servingPatient) {
       currentPatientCard.innerHTML = `
         <div class="doctor-current-patient-details">
-          <strong>#${servingPatient.queueNumber} — ${servingPatient.name}</strong>
-          <div class="badge-group">
-            <span class="badge serving">Serving</span>
-            <span class="badge type-${servingPatient.patientStatus || servingPatient.type || 'regular'}">${(servingPatient.patientStatus || servingPatient.type || 'regular') === 'pwd' ? 'PWD' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'senior' ? 'Senior' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
-          </div>
+          ${renderPatientHeading(servingPatient)}
+          ${renderBadgeGroup([renderStatusBadge('serving'), renderTypeBadge(servingPatient)])}
           <small>Queue #${servingPatient.queueNumber}</small>
-          <small>PH ID: ${servingPatient.philHealthId || 'N/A'}</small>
+          ${renderPhilHealthId(servingPatient)}
         </div>
         <div class="doctor-note-fields">
           <label class="field-label" for="doctor-icd-code">ICD Code</label>
@@ -491,9 +449,7 @@ function renderDoctorQueue() {
       currentPatientCard.innerHTML = `
         <div class="doctor-current-patient-details">
           <strong>No patient is being served yet.</strong>
-          <div class="badge-group">
-            <span class="badge waiting">Waiting</span>
-          </div>
+          ${renderBadgeGroup([renderStatusBadge('waiting')])}
           <small>Queue # — Full Name</small>
           <small>PH ID: N/A</small>
         </div>
@@ -520,12 +476,9 @@ function renderDoctorQueue() {
   if (nextPatientCard) {
     if (nextPatient) {
       nextPatientCard.innerHTML = `
-        <strong>#${nextPatient.queueNumber} — ${nextPatient.name}</strong>
-        <div class="badge-group">
-          <span class="badge waiting">Waiting</span>
-          <span class="badge type-${nextPatient.patientStatus || nextPatient.type || 'regular'}">${(nextPatient.patientStatus || nextPatient.type || 'regular') === 'pwd' ? 'PWD' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'senior' ? 'Senior' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
-        </div>
-        <small>PH ID: ${nextPatient.philHealthId || 'N/A'}</small>
+        ${renderPatientHeading(nextPatient)}
+        ${renderBadgeGroup([renderStatusBadge('waiting'), renderTypeBadge(nextPatient)])}
+        ${renderPhilHealthId(nextPatient)}
       `;
     } else {
       nextPatientCard.innerHTML = `
@@ -536,32 +489,22 @@ function renderDoctorQueue() {
   }
 
   if (state.patients.length === 0) {
-    patientList.innerHTML = '<li class="empty-state">No patients have been added yet.</li>';
+    patientList.innerHTML = renderEmptyState(EMPTY_STATE_MESSAGES.patients);
     return;
   }
 
   patientList.innerHTML = state.patients
-    .map((patient) => {
-      const patientType = patient.patientStatus || patient.type || 'regular';
-      const isCurrentPatient = patient.status === 'serving';
-      return `
-      <li class="queue-item">
-        <div>
-          <strong>#${patient.queueNumber} — ${patient.name}</strong>
-          <div class="badge-group">
-            <span class="badge ${patient.status}">${patient.status}</span>
-            <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
-          </div>
-          <small>PH ID: ${patient.philHealthId || 'N/A'}</small>
-        </div>
-        <div class="actions">
-          <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>
-          <button class="btn btn-warning" data-doctor-action="skip" data-id="${patient.id}">Skip</button>
-          <button class="btn btn-secondary" data-doctor-action="recall" data-id="${patient.id}">Recall</button>
-        </div>
-      </li>
-    `;
-    })
+    .map((patient) => renderQueueItem([
+      renderPatientDetails(patient, {
+        badges: [renderStatusBadge(patient.status), renderTypeBadge(patient)],
+        showPhilHealthId: true,
+      }),
+      renderActions([
+        renderQueueActionButton(patient, 'data-doctor-action', 'serve'),
+        renderQueueActionButton(patient, 'data-doctor-action', 'skip'),
+        renderQueueActionButton(patient, 'data-doctor-action', 'recall'),
+      ]),
+    ]))
     .join('');
 }
 
@@ -576,63 +519,55 @@ function renderBhwQueue() {
   countLabel.textContent = `${state.patients.length} patients`;
 
   if (state.patients.length === 0) {
-    patientList.innerHTML = '<li class="empty-state">No patients have been added yet.</li>';
+    patientList.innerHTML = renderEmptyState(EMPTY_STATE_MESSAGES.patients);
     return;
   }
 
   patientList.innerHTML = state.patients
-    .map((patient) => {
-      const patientType = patient.type || 'regular';
-      return `
-      <li class="queue-item">
-        <div>
-          <strong>#${patient.queueNumber} — ${patient.name}</strong>
-          <div class="badge-group">
-            <span class="badge ${patient.status}">${patient.status}</span>
-            <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
-          </div>
-        </div>
-      </li>
-    `;
-    })
+    .map((patient) => renderQueueItem([
+      renderPatientDetails(patient, {
+        badges: [renderStatusBadge(patient.status), renderTypeBadge(patient)],
+      }),
+    ]))
     .join('');
 }
 
-function addPatient(fields) {
-  const trimmedName = (fields.name || '').trim();
-  const philHealthId = (fields.philHealthId || '').trim();
-  const patientStatus = fields.patientStatus || 'regular';
-  const philHealthStatus = fields.philHealthStatus || 'no-philhealth';
+//This function trims and defaults the patient fields shared by the add and edit flows.
+function normalizePatientFields(fields) {
+  return {
+    name: (fields.name || '').trim(),
+    philHealthId: (fields.philHealthId || '').trim(),
+    patientStatus: fields.patientStatus || 'regular',
+    philHealthStatus: fields.philHealthStatus || 'no-philhealth',
+  };
+}
 
-  if (!trimmedName) {
+function addPatient(fields) {
+  const patient = normalizePatientFields(fields);
+  if (!patient.name) {
     return;
   }
 
-  postAction('add', {
-    name: trimmedName,
-    philHealthId,
-    patientStatus,
-    philHealthStatus,
-  });
+  postAction('add', patient);
 }
 
 function editPatient(id, fields) {
-  const trimmedName = (fields.name || '').trim();
-  const philHealthId = (fields.philHealthId || '').trim();
-  const patientStatus = fields.patientStatus || 'regular';
-  const philHealthStatus = fields.philHealthStatus || 'no-philhealth';
-
-  if (!trimmedName) {
+  const patient = normalizePatientFields(fields);
+  if (!patient.name) {
     return;
   }
 
-  postAction('edit', {
-    id,
-    name: trimmedName,
-    philHealthId,
-    patientStatus,
-    philHealthStatus,
-  });
+  postAction('edit', { id, ...patient });
+}
+
+//Reads the patient fields of a form. The edit modal uses the same ids behind an "edit-" prefix.
+function readPatientFields(prefix = '') {
+  return {
+    name: getElementValue(`${prefix}patient-name`),
+    philHealthId: getElementValue(`${prefix}patient-philhealth-id`),
+    patientStatus: getElementValue(`${prefix}patient-status`) || 'regular',
+    philHealthStatus: getElementValue(`${prefix}philhealth-status`) || 'no-philhealth',
+  };
 }
 
 function deletePatient(id) {
@@ -677,99 +612,45 @@ function resetQueue() {
 }
 
 function render() {
-  if (document.getElementById('patient-list')) {
+  if (hasElement('patient-list')) {
     renderAdminQueue();
   }
 
-  if (document.getElementById('waiting-list')) {
+  if (hasElement('waiting-list')) {
     renderPatientBoard();
   }
 
-  if (document.getElementById('doctor-patient-list')) {
+  if (hasElement('doctor-patient-list')) {
     renderDoctorQueue();
   }
 
-  if (document.getElementById('bhw-patient-list')) {
+  if (hasElement('bhw-patient-list')) {
     renderBhwQueue();
   }
 
-  if (document.getElementById('consultation-history')) {
+  if (hasElement('consultation-history')) {
     renderConsultationHistory();
   }
 }
 
-function initAdminPage() {
-  const patientForm = document.getElementById('patient-form');
-  const patientNameInput = document.getElementById('patient-name');
-  const philHealthIdInput = document.getElementById('patient-philhealth-id');
-  const patientStatusSelect = document.getElementById('patient-status');
-  const philHealthStatusSelect = document.getElementById('philhealth-status');
-  const editModal = document.getElementById('edit-patient-modal');
-  const editPatientForm = document.getElementById('edit-patient-form');
-  const editPatientIdInput = document.getElementById('edit-patient-id');
-  const editPatientNameInput = document.getElementById('edit-patient-name');
-  const editPhilHealthIdInput = document.getElementById('edit-patient-philhealth-id');
-  const editPatientStatusSelect = document.getElementById('edit-patient-status');
-  const editPhilHealthStatusSelect = document.getElementById('edit-philhealth-status');
-  const cancelEditButton = document.getElementById('cancel-edit-btn');
+//The consultation history modal lives on both the admin and the doctor page.
+function initHistoryEditForm() {
   const historyEditForm = document.getElementById('edit-history-form');
   const cancelHistoryEditButton = document.getElementById('cancel-history-edit-btn');
-  const printConsultationButton = document.getElementById('print-consultation-btn');
-  const serveNextButton = document.getElementById('serve-next-btn');
-  const resetButton = document.getElementById('reset-btn');
-
-  if (patientForm && patientNameInput) {
-    patientForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      addPatient({
-        name: patientNameInput.value,
-        philHealthId: philHealthIdInput?.value || '',
-        patientStatus: patientStatusSelect?.value || 'regular',
-        philHealthStatus: philHealthStatusSelect?.value || 'no-philhealth',
-      });
-      patientForm.reset();
-    });
-  }
-
-  if (editPatientForm) {
-    editPatientForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const id = editPatientIdInput?.value || '';
-      if (!id) {
-        return;
-      }
-
-      editPatient(id, {
-        name: editPatientNameInput?.value || '',
-        philHealthId: editPhilHealthIdInput?.value || '',
-        patientStatus: editPatientStatusSelect?.value || 'regular',
-        philHealthStatus: editPhilHealthStatusSelect?.value || 'no-philhealth',
-      });
-
-      if (editModal) {
-        editModal.hidden = true;
-      }
-    });
-  }
-
-  if (cancelEditButton && editModal) {
-    cancelEditButton.addEventListener('click', () => {
-      editModal.hidden = true;
-    });
-  }
 
   if (historyEditForm) {
     historyEditForm.addEventListener('submit', (event) => {
       event.preventDefault();
-      const historyId = document.getElementById('edit-history-id')?.value || '';
-      const icdCode = document.getElementById('edit-history-icd-code')?.value || '';
-      const consultationDetails = document.getElementById('edit-history-consultation')?.value || '';
-
+      const historyId = getElementValue('edit-history-id');
       if (!historyId) {
         return;
       }
 
-      postAction('edit-history', { id: historyId, icdCode, consultationDetails });
+      postAction('edit-history', {
+        id: historyId,
+        icdCode: getElementValue('edit-history-icd-code'),
+        consultationDetails: getElementValue('edit-history-consultation'),
+      });
       closeHistoryEditModal();
     });
   }
@@ -777,18 +658,65 @@ function initAdminPage() {
   if (cancelHistoryEditButton) {
     cancelHistoryEditButton.addEventListener('click', closeHistoryEditModal);
   }
+}
 
-  if (printConsultationButton) {
-    printConsultationButton.addEventListener('click', printConsultationHistory);
+function openPatientEditModal(patient) {
+  setElementValue('edit-patient-id', patient.id);
+  setElementValue('edit-patient-name', patient.name || '');
+  setElementValue('edit-patient-philhealth-id', patient.philHealthId || '');
+  setElementValue('edit-patient-status', getPatientType(patient));
+  setElementValue('edit-philhealth-status', patient.philHealthStatus || 'no-philhealth');
+  setElementHidden('edit-patient-modal', false);
+}
+
+//Runs the queue action requested by a clicked button, whichever page it lives on.
+function handleQueueAction(action, id) {
+  const handlers = {
+    'edit-history': openHistoryEditModal,
+    delete: deletePatient,
+    serve: servePatient,
+    finish: finishPatient,
+    skip: skipPatient,
+    recall: recallPatient,
+  };
+
+  handlers[action]?.(id);
+}
+
+function bindClickHandler(id, handler) {
+  document.getElementById(id)?.addEventListener('click', handler);
+}
+
+function initAdminPage() {
+  const patientForm = document.getElementById('patient-form');
+  const editPatientForm = document.getElementById('edit-patient-form');
+
+  if (patientForm) {
+    patientForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      addPatient(readPatientFields());
+      patientForm.reset();
+    });
   }
 
-  if (serveNextButton) {
-    serveNextButton.addEventListener('click', serveNextPatient);
+  if (editPatientForm) {
+    editPatientForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const id = getElementValue('edit-patient-id');
+      if (!id) {
+        return;
+      }
+
+      editPatient(id, readPatientFields('edit-'));
+      setElementHidden('edit-patient-modal', true);
+    });
   }
 
-  if (resetButton) {
-    resetButton.addEventListener('click', resetQueue);
-  }
+  bindClickHandler('cancel-edit-btn', () => setElementHidden('edit-patient-modal', true));
+  bindClickHandler('print-consultation-btn', printConsultationHistory);
+  bindClickHandler('serve-next-btn', serveNextPatient);
+  bindClickHandler('reset-btn', resetQueue);
+  initHistoryEditForm();
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
@@ -799,36 +727,13 @@ function initAdminPage() {
     const { action, id } = button.dataset;
     if (action === 'edit') {
       const patient = state.patients.find((item) => item.id === id);
-      if (!patient) {
-        return;
+      if (patient) {
+        openPatientEditModal(patient);
       }
-
-      const editModal = document.getElementById('edit-patient-modal');
-      const editPatientIdInput = document.getElementById('edit-patient-id');
-      const editPatientNameInput = document.getElementById('edit-patient-name');
-      const editPhilHealthIdInput = document.getElementById('edit-patient-philhealth-id');
-      const editPatientStatusSelect = document.getElementById('edit-patient-status');
-      const editPhilHealthStatusSelect = document.getElementById('edit-philhealth-status');
-
-      if (editModal && editPatientIdInput && editPatientNameInput && editPhilHealthIdInput && editPatientStatusSelect && editPhilHealthStatusSelect) {
-        editPatientIdInput.value = patient.id;
-        editPatientNameInput.value = patient.name || '';
-        editPhilHealthIdInput.value = patient.philHealthId || '';
-        editPatientStatusSelect.value = patient.patientStatus || patient.type || 'regular';
-        editPhilHealthStatusSelect.value = patient.philHealthStatus || 'no-philhealth';
-        editModal.hidden = false;
-      }
-    } else if (action === 'edit-history') {
-      openHistoryEditModal(id);
-    } else if (action === 'delete') {
-      deletePatient(id);
-    } else if (action === 'serve') {
-      servePatient(id);
-    } else if (action === 'finish') {
-      finishPatient(id);
-    } else if (action === 'skip') {
-      skipPatient(id);
+      return;
     }
+
+    handleQueueAction(action, id);
   });
 }
 
@@ -839,95 +744,41 @@ function initBhwPage() {
   if (addForm && addNameInput) {
     addForm.addEventListener('submit', (event) => {
       event.preventDefault();
-      const type = addForm.querySelector('input[name="patient-type"]:checked')?.value || 'regular';
-      addPatient(addNameInput.value, type);
+      addPatient({
+        name: addNameInput.value,
+        patientStatus: addForm.querySelector('input[name="patient-type"]:checked')?.value || 'regular',
+      });
       addForm.reset();
     });
   }
 }
 
+//Wires a doctor toolbar button to an action applied to the patient being served.
+function bindServingPatientAction(buttonId, action) {
+  bindClickHandler(buttonId, () => {
+    const currentServing = getCurrentServingPatient();
+    if (currentServing) {
+      handleQueueAction(action, currentServing.id);
+    }
+  });
+}
+
 function initDoctorPage() {
-  const serveNextButton = document.getElementById('doctor-serve-next-btn');
-  const recallButton = document.getElementById('doctor-recall-btn');
-  const skipButton = document.getElementById('doctor-skip-btn');
-  const finishButton = document.getElementById('doctor-finish-btn');
-  const historyEditForm = document.getElementById('edit-history-form');
-  const cancelHistoryEditButton = document.getElementById('cancel-history-edit-btn');
-
-  if (serveNextButton) {
-    serveNextButton.addEventListener('click', serveNextPatient);
-  }
-
-  if (recallButton) {
-    recallButton.addEventListener('click', () => {
-      const currentServing = getCurrentServingPatient();
-      if (currentServing) {
-        recallPatient(currentServing.id);
-      }
-    });
-  }
-
-  if (skipButton) {
-    skipButton.addEventListener('click', () => {
-      const currentServing = getCurrentServingPatient();
-      if (currentServing) {
-        skipPatient(currentServing.id);
-      }
-    });
-  }
-
-  if (finishButton) {
-    finishButton.addEventListener('click', () => {
-      const currentServing = getCurrentServingPatient();
-      if (currentServing) {
-        finishPatient(currentServing.id);
-      }
-    });
-  }
-
-  if (historyEditForm) {
-    historyEditForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const historyId = document.getElementById('edit-history-id')?.value || '';
-      const icdCode = document.getElementById('edit-history-icd-code')?.value || '';
-      const consultationDetails = document.getElementById('edit-history-consultation')?.value || '';
-
-      if (!historyId) {
-        return;
-      }
-
-      postAction('edit-history', { id: historyId, icdCode, consultationDetails });
-      closeHistoryEditModal();
-    });
-  }
-
-  if (cancelHistoryEditButton) {
-    cancelHistoryEditButton.addEventListener('click', closeHistoryEditModal);
-  }
+  bindClickHandler('doctor-serve-next-btn', serveNextPatient);
+  bindServingPatientAction('doctor-recall-btn', 'recall');
+  bindServingPatientAction('doctor-skip-btn', 'skip');
+  bindServingPatientAction('doctor-finish-btn', 'finish');
+  initHistoryEditForm();
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
-    if (button) {
-      const { action, id } = button.dataset;
-      if (action === 'edit-history') {
-        openHistoryEditModal(id);
-      }
+    if (button?.dataset.action === 'edit-history') {
+      openHistoryEditModal(button.dataset.id);
     }
 
     const doctorButton = event.target.closest('button[data-doctor-action]');
-    if (!doctorButton) {
-      return;
-    }
-
-    const { doctorAction, id } = doctorButton.dataset;
-    if (doctorAction === 'serve') {
-      servePatient(id);
-    } else if (doctorAction === 'finish') {
-      finishPatient(id);
-    } else if (doctorAction === 'skip') {
-      skipPatient(id);
-    } else if (doctorAction === 'recall') {
-      recallPatient(id);
+    if (doctorButton) {
+      handleQueueAction(doctorButton.dataset.doctorAction, doctorButton.dataset.id);
     }
   });
 }
@@ -949,17 +800,14 @@ function updateLiveClock() {
 function initAdminAuth() {
   const loginForm = document.getElementById('admin-login-form');
   const usernameInput = document.getElementById('admin-username');
-  const passwordInput = document.getElementById('admin-password');
-  const logoutButton = document.getElementById('logout-btn');
 
   if (loginForm) {
     loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       showAdminLoginError('');
 
-      const username = usernameInput?.value.trim() || '';
-      const password = passwordInput?.value || '';
-      const isAuthenticated = await loginAdmin(username, password);
+      const username = getElementValue('admin-username').trim();
+      const isAuthenticated = await loginAdmin(username, getElementValue('admin-password'));
 
       if (!isAuthenticated) {
         showAdminLoginError('Invalid username or password.');
@@ -969,16 +817,12 @@ function initAdminAuth() {
     });
   }
 
-  if (logoutButton) {
-    logoutButton.addEventListener('click', () => {
-      setAdminAuthenticated(false);
-      setAdminView(false);
-      showAdminLoginError('');
-      if (usernameInput) {
-        usernameInput.focus();
-      }
-    });
-  }
+  bindClickHandler('logout-btn', () => {
+    setAdminAuthenticated(false);
+    setAdminView(false);
+    showAdminLoginError('');
+    usernameInput?.focus();
+  });
 
   setAdminView(isAdminAuthenticated());
 }
@@ -988,29 +832,29 @@ document.addEventListener('DOMContentLoaded', () => {
   updateLiveClock();
   setInterval(updateLiveClock, 1000);
 
-  if (document.getElementById('patient-list')) {
+  if (hasElement('patient-list')) {
     initAdminPage();
   }
 
-  if (document.getElementById('admin-login-form')) {
+  if (hasElement('admin-login-form')) {
     initAdminAuth();
   }
 
-  if (document.getElementById('bhw-add-form')) {
+  if (hasElement('bhw-add-form')) {
     initBhwPage();
   }
 
-  if (document.getElementById('doctor-patient-list')) {
+  if (hasElement('doctor-patient-list')) {
     initDoctorPage();
   }
 
-  const needsQueueSync = Boolean(
-    document.getElementById('patient-list') ||
-    document.getElementById('waiting-list') ||
-    document.getElementById('doctor-patient-list') ||
-    document.getElementById('consultation-history') ||
-    document.getElementById('bhw-patient-list')
-  );
+  const needsQueueSync = [
+    'patient-list',
+    'waiting-list',
+    'doctor-patient-list',
+    'consultation-history',
+    'bhw-patient-list',
+  ].some(hasElement);
 
   if (needsQueueSync) {
     fetchState();
