@@ -3,17 +3,123 @@
 // only tells the browser that the response is JSON, so it can be handled properly by the frontend
 header('Content-Type: application/json');
 
+// Errors must never leak into the JSON body; they are logged and reported through jsonResponse instead.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+error_reporting(E_ALL);
+
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$stateFile = __DIR__ . '/queue.json';
+class ApiException extends RuntimeException {
+    private int $statusCode;
 
-$config = require __DIR__ . '/config.php';
+    public function __construct(string $message, int $statusCode = 500, ?Throwable $previous = null) {
+        parent::__construct($message, 0, $previous);
+        $this->statusCode = $statusCode;
+    }
 
-$adminUsername = $config['admin_username'];
-$adminPassword = $config['admin_password'];
-$legacyAdminPass = $config['legacy_admin_password'];
+    public function getStatusCode(): int {
+        return $this->statusCode;
+    }
+}
+
+$responseSent = false;
+
+function jsonResponse(array $payload, int $status = 200): void {
+    global $responseSent;
+
+    $encoded = json_encode($payload);
+    if ($encoded === false) {
+        error_log('Unable to encode API response: ' . json_last_error_msg());
+        $status = 500;
+        $encoded = json_encode(['success' => false, 'message' => 'Unable to encode server response']);
+    }
+
+    if (!headers_sent()) {
+        http_response_code($status);
+    }
+
+    $responseSent = true;
+    echo $encoded;
+}
+
+function reportFailure(string $message, int $status, ?Throwable $error = null): void {
+    global $responseSent;
+
+    if ($error !== null) {
+        error_log('Queue API failure: ' . $error->getMessage());
+    } else {
+        error_log('Queue API failure: ' . $message);
+    }
+
+    if ($responseSent) {
+        return;
+    }
+
+    jsonResponse(['success' => false, 'message' => $message], $status);
+}
+
+// Warnings such as an unwritable data file must not be ignored: they become exceptions and a 500 response.
+set_error_handler(function (int $severity, string $message, string $file, int $line): bool {
+    if (!(error_reporting() & $severity)) {
+        return false;
+    }
+
+    if (in_array($severity, [E_DEPRECATED, E_USER_DEPRECATED], true)) {
+        return false;
+    }
+
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+set_exception_handler(function (Throwable $error): void {
+    if ($error instanceof ApiException) {
+        reportFailure($error->getMessage(), $error->getStatusCode(), $error);
+        return;
+    }
+
+    reportFailure('Unexpected server error while handling the request', 500, $error);
+});
+
+// Fatal errors bypass the exception handler, so the shutdown hook keeps the response valid JSON.
+register_shutdown_function(function (): void {
+    global $responseSent;
+
+    $lastError = error_get_last();
+    $isFatal = $lastError !== null
+        && in_array($lastError['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true);
+
+    if ($responseSent || !$isFatal) {
+        return;
+    }
+
+    error_log('Queue API fatal error: ' . $lastError['message']);
+    jsonResponse(['success' => false, 'message' => 'Unexpected server error while handling the request'], 500);
+});
+
+function loadConfig(string $configFile): array {
+    if (!is_readable($configFile)) {
+        throw new ApiException(
+            'Server configuration is missing. Copy backend/config.example.php to backend/config.php and set the admin credentials.',
+            500
+        );
+    }
+
+    $config = require $configFile;
+    if (!is_array($config)) {
+        throw new ApiException('Server configuration is invalid: backend/config.php must return an array.', 500);
+    }
+
+    foreach (['admin_username', 'admin_password'] as $requiredKey) {
+        if (!isset($config[$requiredKey]) || !is_string($config[$requiredKey]) || $config[$requiredKey] === '') {
+            throw new ApiException("Server configuration is invalid: '$requiredKey' is missing.", 500);
+        }
+    }
+
+    return $config;
+}
 
 function getDefaultState(): array {
     return [
@@ -26,18 +132,23 @@ function getDefaultState(): array {
 function loadState(string $stateFile): array {
     if (!file_exists($stateFile)) {
         $initialState = getDefaultState();
-        file_put_contents($stateFile, json_encode($initialState, JSON_PRETTY_PRINT));
+        saveState($stateFile, $initialState);
         return $initialState;
     }
 
     $contents = file_get_contents($stateFile);
-    if ($contents === false || trim($contents) === '') {
+    if ($contents === false) {
+        throw new ApiException('Unable to read the queue data file', 500);
+    }
+
+    if (trim($contents) === '') {
         return getDefaultState();
     }
 
     $decoded = json_decode($contents, true);
-    if (!is_array($decoded)) {
-        return getDefaultState();
+    // Never fall back to an empty queue here: the next save would overwrite the existing patient data.
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($decoded)) {
+        throw new ApiException('Queue data file is corrupted and was not overwritten. Please restore it from a backup.', 500);
     }
 
     return [
@@ -48,17 +159,49 @@ function loadState(string $stateFile): array {
 }
 
 function saveState(string $stateFile, array $state): void {
-    file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT), LOCK_EX);
-}
+    $encoded = json_encode($state, JSON_PRETTY_PRINT);
+    if ($encoded === false) {
+        throw new ApiException('Unable to encode the queue data: ' . json_last_error_msg(), 500);
+    }
 
-function jsonResponse(array $payload, int $status = 200): void {
-    http_response_code($status);
-    echo json_encode($payload);
+    $written = @file_put_contents($stateFile, $encoded, LOCK_EX);
+    if ($written === false || $written !== strlen($encoded)) {
+        throw new ApiException('Unable to save the queue data. The change was not persisted.', 500);
+    }
 }
 
 function isAdminAuthenticated(): bool {
     return !empty($_SESSION['admin_authenticated']);
 }
+
+/**
+ * @param array<int, array<string, mixed>> $patients
+ */
+function findPatientIndex(array $patients, string $id): ?int {
+    foreach ($patients as $index => $patient) {
+        if (($patient['id'] ?? '') === $id) {
+            return (int) $index;
+        }
+    }
+
+    return null;
+}
+
+function requirePatientId(array $payload): string {
+    $id = (string) ($payload['id'] ?? '');
+    if ($id === '') {
+        throw new ApiException('Patient ID is required', 400);
+    }
+
+    return $id;
+}
+
+$stateFile = __DIR__ . '/queue.json';
+$config = loadConfig(__DIR__ . '/config.php');
+
+$adminUsername = $config['admin_username'];
+$adminPassword = $config['admin_password'];
+$legacyAdminPassword = (string) ($config['legacy_admin_password'] ?? '');
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $state = loadState($stateFile);
@@ -74,9 +217,22 @@ if ($method !== 'POST') {
 }
 
 $rawInput = file_get_contents('php://input');
-$payload = json_decode($rawInput, true);
-if (!is_array($payload)) {
+if ($rawInput === false) {
+    throw new ApiException('Unable to read the request body', 400);
+}
+
+if (trim($rawInput) === '') {
     $payload = $_POST;
+} else {
+    $payload = json_decode($rawInput, true);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($payload)) {
+        if (empty($_POST)) {
+            throw new ApiException('Request body is not valid JSON: ' . json_last_error_msg(), 400);
+        }
+
+        // Form-encoded submissions stay supported.
+        $payload = $_POST;
+    }
 }
 
 $action = $payload['action'] ?? '';
@@ -91,8 +247,9 @@ switch ($action) {
     case 'login':
         $username = trim((string) ($payload['username'] ?? ''));
         $password = (string) ($payload['password'] ?? '');
-        $isValidLogin = ($username === $adminUsername && $password === $adminPassword)
-            || ($username === $adminUsername && $password === $legacyAdminPassword);
+        $isValidLogin = $username === $adminUsername
+            && ($password === $adminPassword
+                || ($legacyAdminPassword !== '' && $password === $legacyAdminPassword));
 
         if ($isValidLogin) {
             $_SESSION['admin_authenticated'] = true;
@@ -177,9 +334,10 @@ switch ($action) {
         break;
 
     case 'serve':
-        $id = (string) ($payload['id'] ?? '');
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
+        $id = requirePatientId($payload);
+
+        if (findPatientIndex($state['patients'], $id) === null) {
+            jsonResponse(['success' => false, 'message' => 'Patient not found in the queue'], 404);
             exit;
         }
 
@@ -216,36 +374,30 @@ switch ($action) {
         break;
 
     case 'finish':
-        $id = (string) ($payload['id'] ?? '');
+        $id = requirePatientId($payload);
         $icdCode = trim((string) ($payload['icdCode'] ?? ''));
         $consultationDetails = trim((string) ($payload['consultationDetails'] ?? ''));
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
+
+        $patientIndex = findPatientIndex($state['patients'], $id);
+        if ($patientIndex === null) {
+            jsonResponse(['success' => false, 'message' => 'Patient not found in the queue'], 404);
             exit;
         }
 
-        $completedPatient = null;
-        foreach ($state['patients'] as $index => $patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $completedPatient = $patient;
-                unset($state['patients'][$index]);
-                break;
-            }
-        }
+        $completedPatient = $state['patients'][$patientIndex];
+        unset($state['patients'][$patientIndex]);
 
-        if ($completedPatient !== null) {
-            $state['consultationHistory'][] = [
-                'id' => $completedPatient['id'],
-                'name' => $completedPatient['name'],
-                'queueNumber' => $completedPatient['queueNumber'],
-                'philHealthId' => $completedPatient['philHealthId'] ?? '',
-                'patientStatus' => $completedPatient['patientStatus'] ?? ($completedPatient['type'] ?? 'regular'),
-                'philHealthStatus' => $completedPatient['philHealthStatus'] ?? 'no-philhealth',
-                'icdCode' => $icdCode,
-                'consultationDetails' => $consultationDetails,
-                'finishedAt' => date('Y-m-d H:i:s'),
-            ];
-        }
+        $state['consultationHistory'][] = [
+            'id' => $completedPatient['id'],
+            'name' => $completedPatient['name'],
+            'queueNumber' => $completedPatient['queueNumber'],
+            'philHealthId' => $completedPatient['philHealthId'] ?? '',
+            'patientStatus' => $completedPatient['patientStatus'] ?? ($completedPatient['type'] ?? 'regular'),
+            'philHealthStatus' => $completedPatient['philHealthStatus'] ?? 'no-philhealth',
+            'icdCode' => $icdCode,
+            'consultationDetails' => $consultationDetails,
+            'finishedAt' => date('Y-m-d H:i:s'),
+        ];
 
         $state['patients'] = array_values($state['patients']);
 
@@ -254,38 +406,30 @@ switch ($action) {
         break;
 
     case 'skip':
-        $id = (string) ($payload['id'] ?? '');
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
+        $id = requirePatientId($payload);
+
+        $patientIndex = findPatientIndex($state['patients'], $id);
+        if ($patientIndex === null) {
+            jsonResponse(['success' => false, 'message' => 'Patient not found in the queue'], 404);
             exit;
         }
 
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $patient['status'] = 'skipped';
-                break;
-            }
-        }
-        unset($patient);
+        $state['patients'][$patientIndex]['status'] = 'skipped';
 
         saveState($stateFile, $state);
         jsonResponse(['success' => true, 'state' => $state]);
         break;
 
     case 'recall':
-        $id = (string) ($payload['id'] ?? '');
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
+        $id = requirePatientId($payload);
+
+        $patientIndex = findPatientIndex($state['patients'], $id);
+        if ($patientIndex === null) {
+            jsonResponse(['success' => false, 'message' => 'Patient not found in the queue'], 404);
             exit;
         }
 
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $patient['status'] = 'waiting';
-                break;
-            }
-        }
-        unset($patient);
+        $state['patients'][$patientIndex]['status'] = 'waiting';
 
         saveState($stateFile, $state);
         jsonResponse(['success' => true, 'state' => $state]);
@@ -343,26 +487,27 @@ switch ($action) {
             $philHealthStatus = 'no-philhealth';
         }
 
-        foreach ($state['patients'] as &$patient) {
-            if (($patient['id'] ?? '') === $id) {
-                $patient['name'] = $name;
-                $patient['philHealthId'] = $philHealthId;
-                $patient['patientStatus'] = $type;
-                $patient['type'] = $type;
-                $patient['philHealthStatus'] = $philHealthStatus;
-                break;
-            }
+        $patientIndex = findPatientIndex($state['patients'], $id);
+        if ($patientIndex === null) {
+            jsonResponse(['success' => false, 'message' => 'Patient not found in the queue'], 404);
+            exit;
         }
-        unset($patient);
+
+        $state['patients'][$patientIndex]['name'] = $name;
+        $state['patients'][$patientIndex]['philHealthId'] = $philHealthId;
+        $state['patients'][$patientIndex]['patientStatus'] = $type;
+        $state['patients'][$patientIndex]['type'] = $type;
+        $state['patients'][$patientIndex]['philHealthStatus'] = $philHealthStatus;
 
         saveState($stateFile, $state);
         jsonResponse(['success' => true, 'state' => $state]);
         break;
 
     case 'delete':
-        $id = (string) ($payload['id'] ?? '');
-        if ($id === '') {
-            jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
+        $id = requirePatientId($payload);
+
+        if (findPatientIndex($state['patients'], $id) === null) {
+            jsonResponse(['success' => false, 'message' => 'Patient not found in the queue'], 404);
             exit;
         }
 
