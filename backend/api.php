@@ -4,16 +4,28 @@
 header('Content-Type: application/json');
 
 if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'httponly' => true,
+        'samesite' => 'Lax',
+        'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+    ]);
     session_start();
 }
 
 $stateFile = __DIR__ . '/queue.json';
 
-$config = require __DIR__ . '/config.php';
+$configFile = __DIR__ . '/config.php';
+if (!file_exists($configFile)) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Server configuration missing. Copy backend/config.example.php to backend/config.php and set credentials.']);
+    exit;
+}
 
-$adminUsername = $config['admin_username'];
-$adminPassword = $config['admin_password'];
-$legacyAdminPass = $config['legacy_admin_password'];
+$config = require $configFile;
+
+$adminUsername = (string) ($config['admin_username'] ?? '');
+$adminPassword = (string) ($config['admin_password'] ?? '');
+$adminPasswordHash = (string) ($config['admin_password_hash'] ?? '');
 
 function getDefaultState(): array {
     return [
@@ -56,11 +68,29 @@ function jsonResponse(array $payload, int $status = 200): void {
     echo json_encode($payload);
 }
 
+function limitLength(string $value, int $maxLength): string {
+    if (function_exists('mb_substr')) {
+        return mb_substr($value, 0, $maxLength);
+    }
+    return substr($value, 0, $maxLength);
+}
+
 function isAdminAuthenticated(): bool {
     return !empty($_SESSION['admin_authenticated']);
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+if ($method === 'POST' && !empty($_SERVER['HTTP_ORIGIN']) && !empty($_SERVER['HTTP_HOST'])) {
+    $originHost = parse_url($_SERVER['HTTP_ORIGIN'], PHP_URL_HOST);
+    $originPort = parse_url($_SERVER['HTTP_ORIGIN'], PHP_URL_PORT);
+    $expectedHost = $originPort !== null ? $originHost . ':' . $originPort : $originHost;
+    if ($originHost !== null && strcasecmp($expectedHost, $_SERVER['HTTP_HOST']) !== 0 && strcasecmp((string) $originHost, $_SERVER['HTTP_HOST']) !== 0) {
+        jsonResponse(['success' => false, 'message' => 'Cross-origin requests are not allowed'], 403);
+        exit;
+    }
+}
+
 $state = loadState($stateFile);
 
 if ($method === 'GET') {
@@ -80,7 +110,7 @@ if (!is_array($payload)) {
 }
 
 $action = $payload['action'] ?? '';
-$requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
+$requiresAdminAuth = in_array($action, ['add', 'edit', 'delete', 'reset'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
     jsonResponse(['success' => false, 'message' => 'Admin authentication required'], 401);
@@ -91,10 +121,17 @@ switch ($action) {
     case 'login':
         $username = trim((string) ($payload['username'] ?? ''));
         $password = (string) ($payload['password'] ?? '');
-        $isValidLogin = ($username === $adminUsername && $password === $adminPassword)
-            || ($username === $adminUsername && $password === $legacyAdminPassword);
+        $usernameMatches = $adminUsername !== '' && hash_equals($adminUsername, $username);
+        $passwordMatches = false;
+        if ($adminPasswordHash !== '') {
+            $passwordMatches = password_verify($password, $adminPasswordHash);
+        } elseif ($adminPassword !== '') {
+            $passwordMatches = hash_equals($adminPassword, $password);
+        }
+        $isValidLogin = $usernameMatches && $passwordMatches;
 
         if ($isValidLogin) {
+            session_regenerate_id(true);
             $_SESSION['admin_authenticated'] = true;
             jsonResponse(['success' => true, 'message' => 'Login successful']);
         } else {
@@ -108,8 +145,8 @@ switch ($action) {
         jsonResponse(['success' => true, 'message' => 'Logged out']);
         break;
     case 'add':
-        $name = trim((string) ($payload['name'] ?? ''));
-        $philHealthId = trim((string) ($payload['philHealthId'] ?? ''));
+        $name = limitLength(trim((string) ($payload['name'] ?? '')), 200);
+        $philHealthId = limitLength(trim((string) ($payload['philHealthId'] ?? '')), 50);
         $type = strtolower(trim((string) ($payload['patientStatus'] ?? $payload['type'] ?? 'regular')));
         $philHealthStatus = strtolower(trim((string) ($payload['philHealthStatus'] ?? 'no-philhealth')));
         $allowedTypes = ['regular', 'pwd', 'senior', 'emergency'];
@@ -217,8 +254,8 @@ switch ($action) {
 
     case 'finish':
         $id = (string) ($payload['id'] ?? '');
-        $icdCode = trim((string) ($payload['icdCode'] ?? ''));
-        $consultationDetails = trim((string) ($payload['consultationDetails'] ?? ''));
+        $icdCode = limitLength(trim((string) ($payload['icdCode'] ?? '')), 50);
+        $consultationDetails = limitLength(trim((string) ($payload['consultationDetails'] ?? '')), 5000);
         if ($id === '') {
             jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
             exit;
@@ -293,8 +330,8 @@ switch ($action) {
 
     case 'edit-history':
         $id = (string) ($payload['id'] ?? '');
-        $icdCode = trim((string) ($payload['icdCode'] ?? ''));
-        $consultationDetails = trim((string) ($payload['consultationDetails'] ?? ''));
+        $icdCode = limitLength(trim((string) ($payload['icdCode'] ?? '')), 50);
+        $consultationDetails = limitLength(trim((string) ($payload['consultationDetails'] ?? '')), 5000);
 
         if ($id === '') {
             jsonResponse(['success' => false, 'message' => 'History ID is required'], 400);
@@ -323,8 +360,8 @@ switch ($action) {
 
     case 'edit':
         $id = (string) ($payload['id'] ?? '');
-        $name = trim((string) ($payload['name'] ?? ''));
-        $philHealthId = trim((string) ($payload['philHealthId'] ?? ''));
+        $name = limitLength(trim((string) ($payload['name'] ?? '')), 200);
+        $philHealthId = limitLength(trim((string) ($payload['philHealthId'] ?? '')), 50);
         $type = strtolower(trim((string) ($payload['patientStatus'] ?? $payload['type'] ?? 'regular')));
         $philHealthStatus = strtolower(trim((string) ($payload['philHealthStatus'] ?? 'no-philhealth')));
         $allowedTypes = ['regular', 'pwd', 'senior', 'emergency'];
