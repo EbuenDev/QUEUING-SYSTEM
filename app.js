@@ -59,10 +59,64 @@ function showAdminLoginError(message) {
   }
 }
 
+//This function surfaces an error to the user instead of leaving a failed action silent. It uses the page status banner when one exists and falls back to an alert.
+function reportError(message, error, { fallbackToAlert = true } = {}) {
+  if (error) {
+    console.error(message, error);
+  } else {
+    console.error(message);
+  }
+
+  const banner = document.getElementById('app-error');
+  if (banner) {
+    banner.textContent = message;
+    banner.hidden = false;
+    return;
+  }
+
+  if (fallbackToAlert) {
+    window.alert(message);
+  }
+}
+
+function clearError() {
+  const banner = document.getElementById('app-error');
+  if (banner) {
+    banner.textContent = '';
+    banner.hidden = true;
+  }
+}
+
+//This function reads an API response as JSON and throws a descriptive error when the request failed or the body is not JSON, so callers never treat a failure as a success.
+async function readApiResponse(response) {
+  const rawBody = await response.text();
+  let data = null;
+
+  if (rawBody.trim() !== '') {
+    try {
+      data = JSON.parse(rawBody);
+    } catch (error) {
+      throw new Error(`Server returned an invalid response (HTTP ${response.status}).`);
+    }
+  }
+
+  if (!response.ok || data?.success !== true) {
+    const error = new Error(data?.message || `Request failed with HTTP ${response.status}.`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
+}
+
 //This function broadcasts the current state of the queue to other browser tabs or windows using the BroadcastChannel API and localStorage. It ensures that all instances of the application stay in sync with the latest queue state.
 function broadcastState(nextState) {
   if (updateChannel) {
-    updateChannel.postMessage({ type: 'queue-state-update', state: nextState });
+    try {
+      updateChannel.postMessage({ type: 'queue-state-update', state: nextState });
+    } catch (error) {
+      console.warn('Unable to broadcast queue state to other tabs', error);
+    }
   }
 
   try {
@@ -111,17 +165,21 @@ function initRealtimeSync() {
 async function fetchState() {
   try {
     const response = await fetch('backend/api.php', { cache: 'no-store' });
-    const data = await response.json();
-    if (data?.success && data.state) {
-      state = data.state;
-      render();
+    const data = await readApiResponse(response);
+    if (!data.state) {
+      throw new Error('Server response did not include the queue state.');
     }
+
+    state = data.state;
+    render();
+    clearError();
   } catch (error) {
-    console.error('Unable to load queue state', error);
+    // Polling runs every second, so the failure is surfaced in the banner only, never as a repeated alert.
+    reportError(`Unable to load the queue: ${error.message}`, error, { fallbackToAlert: false });
   }
 }
 
-//This function sends a POST request to the backend API with the specified action and payload. It updates the local state based on the response and handles any errors that may occur during the request.
+//This function sends a POST request to the backend API with the specified action and payload. It updates the local state based on the response and reports any error to the user instead of failing silently.
 async function postAction(action, payload = {}) {
   try {
     const response = await fetch('backend/api.php', {
@@ -132,27 +190,41 @@ async function postAction(action, payload = {}) {
       body: JSON.stringify({ action, ...payload }),
       cache: 'no-store',
     });
-//This is to handle the case where the user is not authenticated
-    const data = await response.json();
-    if (response.status === 401) {
-      setAdminAuthenticated(false);
-      setAdminView(false);
-      return;
-    }
+
+    const data = await readApiResponse(response);
 
     //this is to ensure that the state is updated after any action is performed, and the UI reflects the latest state.
-    if (data?.success && data.state) {
+    if (data.state) {
       state = data.state;
       render();
       broadcastState(data.state);
       await fetchState();
     }
+
+    clearError();
+    return data;
   } catch (error) {
-    console.error('Unable to update queue state', error);
+//This is to handle the case where the user is no longer authenticated
+    if (error.status === 401) {
+      setAdminAuthenticated(false);
+      setAdminView(false);
+      reportError('Your admin session has expired. Please log in again.', error);
+      throw error;
+    }
+
+    reportError(`Unable to ${action.replace(/-/g, ' ')}: ${error.message}`, error);
+    throw error;
   }
 }
 
-// this function simulates an admin login by checking against hardcoded credentials.
+//This function runs an action and keeps the error reported by postAction from becoming an unhandled rejection.
+function runAction(action, payload = {}) {
+  return postAction(action, payload).catch(() => undefined);
+}
+
+class InvalidCredentialsError extends Error {}
+
+// this function authenticates the admin against the backend session endpoint.
 async function loginAdmin(username, password) {
   try {
     const response = await fetch('backend/api.php', {
@@ -164,19 +236,19 @@ async function loginAdmin(username, password) {
       cache: 'no-store',
     });
 
-    const data = await response.json();
-    if (response.ok && data?.success) {
-      setAdminAuthenticated(true);
-      setAdminView(true);
-      fetchState();
-      window.location.reload();
-      return true;
-    }
-
-    return false;
+    await readApiResponse(response);
+    setAdminAuthenticated(true);
+    setAdminView(true);
+    window.location.reload();
+    return true;
   } catch (error) {
     console.error('Unable to login as admin', error);
-    return false;
+    // A rejected credential and a broken server must not produce the same message.
+    if (error.status === 401) {
+      throw new InvalidCredentialsError(error.message || 'Invalid username or password.');
+    }
+
+    throw error;
   }
 }
 
@@ -297,6 +369,7 @@ function renderConsultationHistory() {
 function openHistoryEditModal(id) {
   const entry = state.consultationHistory.find((item) => (item.id || '') === id);
   if (!entry) {
+    reportError('That consultation record is no longer available. Refresh the page and try again.');
     return;
   }
 
@@ -306,6 +379,7 @@ function openHistoryEditModal(id) {
   const consultationInput = document.getElementById('edit-history-consultation');
 
   if (!modal || !historyIdInput || !icdCodeInput || !consultationInput) {
+    reportError('The edit form is unavailable on this page.');
     return;
   }
 
@@ -336,6 +410,7 @@ function printConsultationHistory() {
   const printWindow = window.open('', '_blank', 'width=900,height=700');
 
   if (!printWindow) {
+    reportError('Unable to open the print window. Please allow pop-ups for this site and try again.');
     return;
   }
 
@@ -605,10 +680,11 @@ function addPatient(fields) {
   const philHealthStatus = fields.philHealthStatus || 'no-philhealth';
 
   if (!trimmedName) {
+    reportError('Patient name is required.');
     return;
   }
 
-  postAction('add', {
+  return runAction('add', {
     name: trimmedName,
     philHealthId,
     patientStatus,
@@ -623,10 +699,11 @@ function editPatient(id, fields) {
   const philHealthStatus = fields.philHealthStatus || 'no-philhealth';
 
   if (!trimmedName) {
+    reportError('Patient name is required.');
     return;
   }
 
-  postAction('edit', {
+  return runAction('edit', {
     id,
     name: trimmedName,
     philHealthId,
@@ -636,11 +713,11 @@ function editPatient(id, fields) {
 }
 
 function deletePatient(id) {
-  postAction('delete', { id });
+  return runAction('delete', { id });
 }
 
 function servePatient(id) {
-  postAction('serve', { id });
+  return runAction('serve', { id });
 }
 
 function finishPatient(id) {
@@ -657,23 +734,32 @@ function finishPatient(id) {
     icdCodeInput.value = '';
   }
 
-  postAction('finish', { id, consultationDetails, icdCode });
+  return postAction('finish', { id, consultationDetails, icdCode }).catch(() => {
+    // The notes are restored so a failed save does not discard what the doctor typed.
+    if (consultationNoteInput) {
+      consultationNoteInput.value = consultationDetails;
+    }
+
+    if (icdCodeInput) {
+      icdCodeInput.value = icdCode;
+    }
+  });
 }
 
 function skipPatient(id) {
-  postAction('skip', { id });
+  return runAction('skip', { id });
 }
 
 function recallPatient(id) {
-  postAction('recall', { id });
+  return runAction('recall', { id });
 }
 
 function serveNextPatient() {
-  postAction('serve-next');
+  return runAction('serve-next');
 }
 
 function resetQueue() {
-  postAction('reset');
+  return runAction('reset');
 }
 
 function render() {
@@ -719,34 +805,40 @@ function initAdminPage() {
   const resetButton = document.getElementById('reset-btn');
 
   if (patientForm && patientNameInput) {
-    patientForm.addEventListener('submit', (event) => {
+    patientForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      addPatient({
+      const result = await addPatient({
         name: patientNameInput.value,
         philHealthId: philHealthIdInput?.value || '',
         patientStatus: patientStatusSelect?.value || 'regular',
         philHealthStatus: philHealthStatusSelect?.value || 'no-philhealth',
       });
-      patientForm.reset();
+
+      // The form keeps its values when the patient could not be registered.
+      if (result) {
+        patientForm.reset();
+      }
     });
   }
 
   if (editPatientForm) {
-    editPatientForm.addEventListener('submit', (event) => {
+    editPatientForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const id = editPatientIdInput?.value || '';
       if (!id) {
+        reportError('No patient is selected for editing.');
         return;
       }
 
-      editPatient(id, {
+      const result = await editPatient(id, {
         name: editPatientNameInput?.value || '',
         philHealthId: editPhilHealthIdInput?.value || '',
         patientStatus: editPatientStatusSelect?.value || 'regular',
         philHealthStatus: editPhilHealthStatusSelect?.value || 'no-philhealth',
       });
 
-      if (editModal) {
+      // The modal stays open when the save failed so the entered details are not lost.
+      if (result && editModal) {
         editModal.hidden = true;
       }
     });
@@ -759,18 +851,21 @@ function initAdminPage() {
   }
 
   if (historyEditForm) {
-    historyEditForm.addEventListener('submit', (event) => {
+    historyEditForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const historyId = document.getElementById('edit-history-id')?.value || '';
       const icdCode = document.getElementById('edit-history-icd-code')?.value || '';
       const consultationDetails = document.getElementById('edit-history-consultation')?.value || '';
 
       if (!historyId) {
+        reportError('No consultation record is selected for editing.');
         return;
       }
 
-      postAction('edit-history', { id: historyId, icdCode, consultationDetails });
-      closeHistoryEditModal();
+      const result = await runAction('edit-history', { id: historyId, icdCode, consultationDetails });
+      if (result) {
+        closeHistoryEditModal();
+      }
     });
   }
 
@@ -800,6 +895,7 @@ function initAdminPage() {
     if (action === 'edit') {
       const patient = state.patients.find((item) => item.id === id);
       if (!patient) {
+        reportError('That patient is no longer in the queue. Refresh the page and try again.');
         return;
       }
 
@@ -817,6 +913,8 @@ function initAdminPage() {
         editPatientStatusSelect.value = patient.patientStatus || patient.type || 'regular';
         editPhilHealthStatusSelect.value = patient.philHealthStatus || 'no-philhealth';
         editModal.hidden = false;
+      } else {
+        reportError('The edit patient form is unavailable on this page.');
       }
     } else if (action === 'edit-history') {
       openHistoryEditModal(id);
@@ -837,13 +935,27 @@ function initBhwPage() {
   const addNameInput = document.getElementById('bhw-patient-name');
 
   if (addForm && addNameInput) {
-    addForm.addEventListener('submit', (event) => {
+    addForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const type = addForm.querySelector('input[name="patient-type"]:checked')?.value || 'regular';
-      addPatient(addNameInput.value, type);
-      addForm.reset();
+      const result = await addPatient({ name: addNameInput.value, patientStatus: type });
+
+      if (result) {
+        addForm.reset();
+      }
     });
   }
+}
+
+//This helper makes it explicit when a doctor action cannot run because nobody is being served.
+function withServingPatient(action, handler) {
+  const currentServing = getCurrentServingPatient();
+  if (!currentServing) {
+    reportError(`No patient is currently being served, so there is nothing to ${action}.`);
+    return undefined;
+  }
+
+  return handler(currentServing);
 }
 
 function initDoctorPage() {
@@ -860,44 +972,38 @@ function initDoctorPage() {
 
   if (recallButton) {
     recallButton.addEventListener('click', () => {
-      const currentServing = getCurrentServingPatient();
-      if (currentServing) {
-        recallPatient(currentServing.id);
-      }
+      withServingPatient('recall', (patient) => recallPatient(patient.id));
     });
   }
 
   if (skipButton) {
     skipButton.addEventListener('click', () => {
-      const currentServing = getCurrentServingPatient();
-      if (currentServing) {
-        skipPatient(currentServing.id);
-      }
+      withServingPatient('skip', (patient) => skipPatient(patient.id));
     });
   }
 
   if (finishButton) {
     finishButton.addEventListener('click', () => {
-      const currentServing = getCurrentServingPatient();
-      if (currentServing) {
-        finishPatient(currentServing.id);
-      }
+      withServingPatient('finish', (patient) => finishPatient(patient.id));
     });
   }
 
   if (historyEditForm) {
-    historyEditForm.addEventListener('submit', (event) => {
+    historyEditForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const historyId = document.getElementById('edit-history-id')?.value || '';
       const icdCode = document.getElementById('edit-history-icd-code')?.value || '';
       const consultationDetails = document.getElementById('edit-history-consultation')?.value || '';
 
       if (!historyId) {
+        reportError('No consultation record is selected for editing.');
         return;
       }
 
-      postAction('edit-history', { id: historyId, icdCode, consultationDetails });
-      closeHistoryEditModal();
+      const result = await runAction('edit-history', { id: historyId, icdCode, consultationDetails });
+      if (result) {
+        closeHistoryEditModal();
+      }
     });
   }
 
@@ -959,12 +1065,16 @@ function initAdminAuth() {
 
       const username = usernameInput?.value.trim() || '';
       const password = passwordInput?.value || '';
-      const isAuthenticated = await loginAdmin(username, password);
 
-      if (!isAuthenticated) {
-        showAdminLoginError('Invalid username or password.');
-      } else {
+      try {
+        await loginAdmin(username, password);
         loginForm.reset();
+      } catch (error) {
+        if (error instanceof InvalidCredentialsError) {
+          showAdminLoginError('Invalid username or password.');
+        } else {
+          showAdminLoginError(`Unable to sign in: ${error.message}`);
+        }
       }
     });
   }
