@@ -8,6 +8,9 @@ backend/queue.json
 # Cookies / session data
 cookies.txt
 queue_cookie.txt
+vendor/
+node_modules/
+.phpunit.cache/
 
 # Logs
 *.log
