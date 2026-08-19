@@ -316,11 +316,15 @@ For example, when using Laragon:
 C:\laragon\www\QUEUING-SYSTEM
 ```
 
-### 3. Start your PHP/Apache server
+### 3. Create the backend configuration
+
+Copy `backend/config.example.php` to `backend/config.php` and set the admin credentials. Prefer setting `admin_password_hash` (generate with `php -r "echo password_hash('your-password', PASSWORD_DEFAULT), PHP_EOL;"`). This file is gitignored and must never be committed.
+
+### 4. Start your PHP/Apache server
 
 Make sure PHP and your web server are running.
 
-### 4. Open the application
+### 5. Open the application
 
 Open the project through your local server.
 

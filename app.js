@@ -6,11 +6,6 @@ let state = {
 
 let updateChannel = null;
 
-const ADMIN_CREDENTIALS = {
-  username: 'admin',
-  password: 'admin123',
-};
-
 function isAdminAuthenticated() {
   try {
     return sessionStorage.getItem('queue-admin-auth') === 'true';
@@ -152,7 +147,6 @@ async function postAction(action, payload = {}) {
   }
 }
 
-// this function simulates an admin login by checking against hardcoded credentials.
 async function loginAdmin(username, password) {
   try {
     const response = await fetch('backend/api.php', {
@@ -222,7 +216,7 @@ function renderPatientBoard() {
   }
 
   if (nextPatientEntry) {
-    nextPatient.textContent = `#${nextPatientEntry.queueNumber} — ${nextPatientEntry.name}`;
+    nextPatient.textContent = `#${nextPatientEntry.queueNumber} — ${nextPatientEntry.name}`; // textContent is XSS-safe
   } else {
     nextPatient.textContent = 'No queue yet';
   }
@@ -241,7 +235,7 @@ function renderPatientBoard() {
         return `
         <li class="queue-item">
           <div>
-            <strong>#${patient.queueNumber} — ${patient.name}</strong>
+            <strong>#${escapeHtml(patient.queueNumber)} — ${escapeHtml(patient.name)}</strong>
             <small>Waiting for service</small>
           </div>
           <div class="badge-group">
@@ -279,14 +273,14 @@ function renderConsultationHistory() {
       (entry) => `
         <li class="queue-item">
           <div>
-            <strong>#${entry.queueNumber} — ${entry.name}</strong>
-            <small>${entry.finishedAt || 'Completed'}</small>
-            <small>PH ID: ${entry.philHealthId || 'N/A'}</small>
-            <small>ICD: ${entry.icdCode || 'N/A'}</small>
-            <small>Consultation: ${entry.consultationDetails || 'No notes recorded'}</small>
+            <strong>#${escapeHtml(entry.queueNumber)} — ${escapeHtml(entry.name)}</strong>
+            <small>${escapeHtml(entry.finishedAt || 'Completed')}</small>
+            <small>PH ID: ${escapeHtml(entry.philHealthId || 'N/A')}</small>
+            <small>ICD: ${escapeHtml(entry.icdCode || 'N/A')}</small>
+            <small>Consultation: ${escapeHtml(entry.consultationDetails || 'No notes recorded')}</small>
           </div>
           <div class="actions">
-            <button class="btn btn-secondary" type="button" data-action="edit-history" data-id="${entry.id || ''}">Edit</button>
+            <button class="btn btn-secondary" type="button" data-action="edit-history" data-id="${escapeHtml(entry.id || '')}">Edit</button>
           </div>
         </li>
       `,
@@ -418,23 +412,23 @@ function renderAdminQueue() {
         const actionButtons = [];
 
         if (isAdminPage) {
-          actionButtons.push(`<button class="btn btn-secondary" data-action="edit" data-id="${patient.id}">Edit</button>`);
+          actionButtons.push(`<button class="btn btn-secondary" data-action="edit" data-id="${escapeHtml(patient.id)}">Edit</button>`);
           const isCurrentPatient = patient.status === 'serving';
-          actionButtons.push(`<button class="btn btn-primary" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>`);
-          actionButtons.push(`<button class="btn btn-warning" data-action="skip" data-id="${patient.id}">Skip</button>`);
-          actionButtons.push(`<button class="btn btn-danger" data-action="delete" data-id="${patient.id}">Delete</button>`);
+          actionButtons.push(`<button class="btn btn-primary" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${escapeHtml(patient.id)}">${isCurrentPatient ? 'Done' : 'Serve'}</button>`);
+          actionButtons.push(`<button class="btn btn-warning" data-action="skip" data-id="${escapeHtml(patient.id)}">Skip</button>`);
+          actionButtons.push(`<button class="btn btn-danger" data-action="delete" data-id="${escapeHtml(patient.id)}">Delete</button>`);
         }
 
         return `
           <li class="queue-item">
             <div>
-              <strong>#${patient.queueNumber} — ${patient.name}</strong>
+              <strong>#${escapeHtml(patient.queueNumber)} — ${escapeHtml(patient.name)}</strong>
               <div class="badge-group">
-                <span class="badge ${patient.status}">${patient.status}</span>
-                <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
-                <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
+                <span class="badge ${escapeHtml(patient.status)}">${escapeHtml(patient.status)}</span>
+                <span class="badge type-${escapeHtml(patientType)}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
+                <span class="badge philhealth-${escapeHtml(philHealthStatus)}">${escapeHtml(philHealthStatus.replace(/-/g, ' '))}</span>
               </div>
-              <small>PH ID: ${patient.philHealthId || 'N/A'}</small>
+              <small>PH ID: ${escapeHtml(patient.philHealthId || 'N/A')}</small>
             </div>
             <div class="actions">
               ${actionButtons.join('')}
@@ -472,19 +466,19 @@ function renderDoctorQueue() {
     if (servingPatient) {
       currentPatientCard.innerHTML = `
         <div class="doctor-current-patient-details">
-          <strong>#${servingPatient.queueNumber} — ${servingPatient.name}</strong>
+          <strong>#${escapeHtml(servingPatient.queueNumber)} — ${escapeHtml(servingPatient.name)}</strong>
           <div class="badge-group">
             <span class="badge serving">Serving</span>
-            <span class="badge type-${servingPatient.patientStatus || servingPatient.type || 'regular'}">${(servingPatient.patientStatus || servingPatient.type || 'regular') === 'pwd' ? 'PWD' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'senior' ? 'Senior' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
+            <span class="badge type-${escapeHtml(servingPatient.patientStatus || servingPatient.type || 'regular')}">${(servingPatient.patientStatus || servingPatient.type || 'regular') === 'pwd' ? 'PWD' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'senior' ? 'Senior' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
           </div>
-          <small>Queue #${servingPatient.queueNumber}</small>
-          <small>PH ID: ${servingPatient.philHealthId || 'N/A'}</small>
+          <small>Queue #${escapeHtml(servingPatient.queueNumber)}</small>
+          <small>PH ID: ${escapeHtml(servingPatient.philHealthId || 'N/A')}</small>
         </div>
         <div class="doctor-note-fields">
           <label class="field-label" for="doctor-icd-code">ICD Code</label>
-          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${draftIcdCode || servingPatient.icdCode || ''}" />
+          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${escapeHtml(draftIcdCode || servingPatient.icdCode || '')}" />
           <label class="field-label" for="doctor-consultation-note">Consultation Details</label>
-          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient">${draftConsultationDetails || servingPatient.consultationDetails || ''}</textarea>
+          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient">${escapeHtml(draftConsultationDetails || servingPatient.consultationDetails || '')}</textarea>
         </div>
       `;
     } else {
@@ -499,9 +493,9 @@ function renderDoctorQueue() {
         </div>
         <div class="doctor-note-fields">
           <label class="field-label" for="doctor-icd-code">ICD Code</label>
-          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${draftIcdCode}" disabled />
+          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${escapeHtml(draftIcdCode)}" disabled />
           <label class="field-label" for="doctor-consultation-note">Consultation Details</label>
-          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient" disabled>${draftConsultationDetails}</textarea>
+          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient" disabled>${escapeHtml(draftConsultationDetails)}</textarea>
         </div>
       `;
     }
@@ -520,12 +514,12 @@ function renderDoctorQueue() {
   if (nextPatientCard) {
     if (nextPatient) {
       nextPatientCard.innerHTML = `
-        <strong>#${nextPatient.queueNumber} — ${nextPatient.name}</strong>
+        <strong>#${escapeHtml(nextPatient.queueNumber)} — ${escapeHtml(nextPatient.name)}</strong>
         <div class="badge-group">
           <span class="badge waiting">Waiting</span>
-          <span class="badge type-${nextPatient.patientStatus || nextPatient.type || 'regular'}">${(nextPatient.patientStatus || nextPatient.type || 'regular') === 'pwd' ? 'PWD' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'senior' ? 'Senior' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
+          <span class="badge type-${escapeHtml(nextPatient.patientStatus || nextPatient.type || 'regular')}">${(nextPatient.patientStatus || nextPatient.type || 'regular') === 'pwd' ? 'PWD' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'senior' ? 'Senior' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
         </div>
-        <small>PH ID: ${nextPatient.philHealthId || 'N/A'}</small>
+        <small>PH ID: ${escapeHtml(nextPatient.philHealthId || 'N/A')}</small>
       `;
     } else {
       nextPatientCard.innerHTML = `
@@ -547,17 +541,17 @@ function renderDoctorQueue() {
       return `
       <li class="queue-item">
         <div>
-          <strong>#${patient.queueNumber} — ${patient.name}</strong>
+          <strong>#${escapeHtml(patient.queueNumber)} — ${escapeHtml(patient.name)}</strong>
           <div class="badge-group">
-            <span class="badge ${patient.status}">${patient.status}</span>
-            <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
+            <span class="badge ${escapeHtml(patient.status)}">${escapeHtml(patient.status)}</span>
+            <span class="badge type-${escapeHtml(patientType)}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
           </div>
-          <small>PH ID: ${patient.philHealthId || 'N/A'}</small>
+          <small>PH ID: ${escapeHtml(patient.philHealthId || 'N/A')}</small>
         </div>
         <div class="actions">
-          <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>
-          <button class="btn btn-warning" data-doctor-action="skip" data-id="${patient.id}">Skip</button>
-          <button class="btn btn-secondary" data-doctor-action="recall" data-id="${patient.id}">Recall</button>
+          <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${escapeHtml(patient.id)}">${isCurrentPatient ? 'Done' : 'Serve'}</button>
+          <button class="btn btn-warning" data-doctor-action="skip" data-id="${escapeHtml(patient.id)}">Skip</button>
+          <button class="btn btn-secondary" data-doctor-action="recall" data-id="${escapeHtml(patient.id)}">Recall</button>
         </div>
       </li>
     `;
@@ -586,10 +580,10 @@ function renderBhwQueue() {
       return `
       <li class="queue-item">
         <div>
-          <strong>#${patient.queueNumber} — ${patient.name}</strong>
+          <strong>#${escapeHtml(patient.queueNumber)} — ${escapeHtml(patient.name)}</strong>
           <div class="badge-group">
-            <span class="badge ${patient.status}">${patient.status}</span>
-            <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
+            <span class="badge ${escapeHtml(patient.status)}">${escapeHtml(patient.status)}</span>
+            <span class="badge type-${escapeHtml(patientType)}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
           </div>
         </div>
       </li>
