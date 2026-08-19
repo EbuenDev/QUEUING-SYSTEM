@@ -1,16 +1,11 @@
 {
   "name": "queuing-system-tests",
-  "version": "1.0.0",
-  "description": "<div align=\"center\">",
-  "main": "app.js",
   "private": true,
+  "description": "Unit tests for the RHU II patient queuing system.",
   "scripts": {
-    "test": "node --test",
-    "coverage": "node --test --experimental-test-coverage"
+    "test": "node --test tests/actions.test.js tests/rendering.test.js tests/state-auth.test.js",
+    "coverage": "node --test --experimental-test-coverage tests/actions.test.js tests/rendering.test.js tests/state-auth.test.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "jsdom": "^24.1.3"
   }

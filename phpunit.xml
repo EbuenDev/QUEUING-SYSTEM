@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<phpunit bootstrap="backend/tests/bootstrap.php" cacheDirectory=".phpunit.cache">
+<phpunit
+    bootstrap="backend/tests/bootstrap.php"
+    cacheDirectory=".phpunit.cache"
+    failOnWarning="true"
+    failOnNotice="true"
+>
     <testsuites>
         <testsuite name="backend">
             <directory>backend/tests</directory>

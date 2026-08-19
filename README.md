@@ -300,6 +300,20 @@ The application can be run using a local PHP development environment such as:
 
 ---
 
+## 🧪 Testing
+
+The test suites require PHP 8.1 or newer with Composer, and Node.js with npm.
+Install the dependencies once, then run:
+
+```bash
+composer install
+npm install
+vendor/bin/phpunit
+npm test
+```
+
+---
+
 ## 🚀 Running the Project Locally
 
 ### 1. Clone the repository

@@ -11,32 +11,6 @@ require_once __DIR__ . '/queue_logic.php';
 $stateFile = __DIR__ . '/queue.json';
 $config = require __DIR__ . '/config.php';
 
-function loadState(string $stateFile): array
-{
-    if (!file_exists($stateFile)) {
-        $initialState = getDefaultState();
-        file_put_contents($stateFile, json_encode($initialState, JSON_PRETTY_PRINT));
-        return $initialState;
-    }
-
-    $contents = file_get_contents($stateFile);
-    if ($contents === false || trim($contents) === '') {
-        return getDefaultState();
-    }
-
-    $decoded = json_decode($contents, true);
-    if (!is_array($decoded)) {
-        return getDefaultState();
-    }
-
-    return normalizeState($decoded);
-}
-
-function saveState(string $stateFile, array $state): void
-{
-    file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT), LOCK_EX);
-}
-
 function jsonResponse(array $payload, int $status = 200): void
 {
     http_response_code($status);
