@@ -832,26 +832,23 @@ function servePatient(id) {
 }
 
 function finishPatient(id) {
-  // Try admin-specific inputs first, then fall back to doctor inputs
-  const adminConsultationNoteInput = document.getElementById('admin-consultation-note');
-  const adminIcdCodeInput = document.getElementById('admin-icd-code');
+  // Only use doctor inputs for consultation details
+  // Admin doesn't have consultation inputs, so they will be empty
   const doctorConsultationNoteInput = document.getElementById('doctor-consultation-note');
   const doctorIcdCodeInput = document.getElementById('doctor-icd-code');
 
-  const consultationNoteInput = adminConsultationNoteInput || doctorConsultationNoteInput;
-  const icdCodeInput = adminIcdCodeInput || doctorIcdCodeInput;
+  const consultationDetails = doctorConsultationNoteInput?.value || '';
+  const icdCode = doctorIcdCodeInput?.value || '';
 
-  const consultationDetails = consultationNoteInput?.value || '';
-  const icdCode = icdCodeInput?.value || '';
-
-  if (consultationNoteInput) {
-    consultationNoteInput.value = '';
+  if (doctorConsultationNoteInput) {
+    doctorConsultationNoteInput.value = '';
   }
 
-  if (icdCodeInput) {
-    icdCodeInput.value = '';
+  if (doctorIcdCodeInput) {
+    doctorIcdCodeInput.value = '';
   }
 
+  // Admin can finish without consultation details, doctor needs them
   postAction('finish', { id, consultationDetails, icdCode });
 }
 
