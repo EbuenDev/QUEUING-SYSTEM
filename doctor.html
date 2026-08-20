@@ -52,7 +52,21 @@
         <div class="section-header">
             <h2>Patient List</h2>
         </div>
-        <ul id="doctor-patient-list" class="queue-list admin-list"></ul>
+        <div class="queue-table-wrap">
+            <table class="queue-table">
+                <thead>
+                    <tr>
+                        <th>Queue #</th>
+                        <th>Patient Name</th>
+                        <th>Status</th>
+                        <th>Patient Type</th>
+                        <th>PhilHealth ID</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="doctor-patient-list"></tbody>
+            </table>
+        </div>
         </section>
         
         <section id="doctor-followup-section" class="card full-width" hidden>
