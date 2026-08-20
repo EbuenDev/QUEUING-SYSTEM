@@ -132,6 +132,7 @@ body {
   border-radius: 18px;
   padding: 20px;
   box-shadow: 0 10px 30px rgba(24, 50, 75, 0.08);
+  min-width: 0;
 }
 
 .spotlight {
@@ -433,6 +434,7 @@ body {
 
 .queue-table {
   width: 100%;
+  min-width: 640px;
   border-collapse: collapse;
   font-size: 0.95rem;
 }
