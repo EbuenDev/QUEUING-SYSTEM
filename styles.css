@@ -132,6 +132,7 @@ body {
   border-radius: 18px;
   padding: 20px;
   box-shadow: 0 10px 30px rgba(24, 50, 75, 0.08);
+  min-width: 0;
 }
 
 .spotlight {
@@ -402,6 +403,85 @@ body {
 .badge.ready {
   background: #d1fae5;
   color: #065f46;
+}
+
+.queue-table-wrap {
+  border: 1px solid #d8e6f0;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow-x: auto;
+}
+
+.queue-table {
+  width: 100%;
+  min-width: 640px;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.queue-table thead th {
+  padding: 14px 16px;
+  text-align: left;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #6b7a8c;
+  background: #ffffff;
+  border-bottom: 2px solid #e3edf5;
+  white-space: nowrap;
+}
+
+.queue-table tbody td {
+  padding: 14px 16px;
+  border-bottom: 1px solid #ffffff;
+  vertical-align: middle;
+  color: #18324b;
+}
+
+.queue-table tbody tr {
+  background: #d7f4f8;
+}
+
+.queue-table tbody tr:nth-child(even) {
+  background: #eaf9fb;
+}
+
+.queue-table tbody tr:hover {
+  background: #c4edf4;
+}
+
+.queue-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.queue-table-number {
+  font-weight: 700;
+  color: #0f5c73;
+  white-space: nowrap;
+}
+
+.queue-table-name {
+  font-weight: 600;
+}
+
+.queue-table .badge {
+  margin-top: 0;
+}
+
+.queue-table .actions {
+  gap: 6px;
+}
+
+.queue-table .actions .btn {
+  padding: 6px 12px;
+  font-size: 0.82rem;
+}
+
+.queue-table-empty {
+  padding: 20px;
+  text-align: center;
+  color: #5f7794;
+  background: #f8fbff;
 }
 
 .empty-state {
