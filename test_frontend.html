@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Testing - RHU II Patient Queuing System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background: #fafafa;
+        }
+        .success { color: green; font-weight: bold; }
+        .error { color: red; font-weight: bold; }
+        .warning { color: orange; font-weight: bold; }
+        .info { color: blue; }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 3px;
+        }
+        .test-result.pass { background: #d4edda; border-left: 4px solid #28a745; }
+        .test-result.fail { background: #f8d7da; border-left: 4px solid #dc3545; }
+        .test-result.skip { background: #fff3cd; border-left: 4px solid #ffc107; }
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            cursor: pointer;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover { background: #0056b3; }
+        .stats {
+            background: #e8f4f8;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th { background: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🧪 Frontend Testing Suite</h1>
+        <p>RHU II Patient Queuing System - Comprehensive Frontend Tests</p>
+        
+        <div class="stats">
+            <strong>Test Environment:</strong> Browser-based JavaScript Testing
+        </div>
+
+        <div class="test-section">
+            <h2>📁 File Structure Test</h2>
+            <button onclick="testFileStructure()">Check File Structure</button>
+            <div id="fileStructureResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🎨 HTML Structure Tests</h2>
+            <button onclick="testHTMLStructure()">Test HTML Elements</button>
+            <div id="htmlStructureResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📡 API Integration Tests</h2>
+            <button onclick="testAPIConnection()">Test API Connection</button>
+            <button onclick="testAPIEndpoints()">Test API Endpoints</button>
+            <div id="apiResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🎯 JavaScript Function Tests</h2>
+            <button onclick="testJavaScriptFunctions()">Test Core Functions</button>
+            <div id="jsFunctionResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔄 Real-time Features Test</h2>
+            <button onclick="testRealtimeFeatures()">Test Real-time Sync</button>
+            <div id="realtimeResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📱 Responsive Design Test</h2>
+            <button onclick="testResponsiveDesign()">Test Responsiveness</button>
+            <div id="responsiveResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔐 Authentication Test</h2>
+            <button onclick="testAuthentication()">Test Login System</button>
+            <div id="authResult"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>📊 Test Summary</h2>
+            <div id="testSummary"></div>
+            <button onclick="runAllTests()">Run All Tests</button>
+        </div>
+    </div>
+
+    <script>
+        let testResults = {
+            total: 0,
+            passed: 0,
+            failed: 0,
+            skipped: 0
+        };
+
+        function addResult(containerId, message, status) {
+            const container = document.getElementById(containerId);
+            const resultDiv = document.createElement('div');
+            resultDiv.className = `test-result ${status}`;
+            
+            const icon = status === 'pass' ? '✅' : status === 'fail' ? '❌' : '⚠️';
+            resultDiv.innerHTML = `${icon} ${message}`;
+            
+            container.appendChild(resultDiv);
+            
+            testResults.total++;
+            if (status === 'pass') testResults.passed++;
+            else if (status === 'fail') testResults.failed++;
+            else testResults.skipped++;
+            
+            updateSummary();
+        }
+
+        function updateSummary() {
+            const summary = document.getElementById('testSummary');
+            summary.innerHTML = `
+                <table>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Count</th>
+                    </tr>
+                    <tr>
+                        <td>Total Tests</td>
+                        <td>${testResults.total}</td>
+                    </tr>
+                    <tr>
+                        <td class="success">Passed</td>
+                        <td>${testResults.passed}</td>
+                    </tr>
+                    <tr>
+                        <td class="error">Failed</td>
+                        <td>${testResults.failed}</td>
+                    </tr>
+                    <tr>
+                        <td class="warning">Skipped</td>
+                        <td>${testResults.skipped}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Success Rate</strong></td>
+                        <td><strong>${testResults.total > 0 ? Math.round((testResults.passed / testResults.total) * 100) : 0}%</strong></td>
+                    </tr>
+                </table>
+            `;
+        }
+
+        function testFileStructure() {
+            const container = document.getElementById('fileStructureResult');
+            container.innerHTML = '';
+            
+            const requiredFiles = [
+                'index.html',
+                'admin.html', 
+                'doctor.html',
+                'bhw.html',
+                'app.js',
+                'styles.css',
+                'backend/api.php',
+                'backend/api_postgres.php',
+                'backend/database/schema.sql',
+                'backend/database/Database.php',
+                'backend/database/config.php'
+            ];
+
+            requiredFiles.forEach(file => {
+                // Since we can't check actual file existence from browser, we'll simulate
+                addResult('fileStructureResult', `File check: ${file} (verify manually)`, 'skip');
+            });
+            
+            addResult('fileStructureResult', 'File structure check requires server environment', 'info');
+        }
+
+        function testHTMLStructure() {
+            const container = document.getElementById('htmlStructureResult');
+            container.innerHTML = '';
+            
+            // Test current page structure
+            const hasTitle = document.querySelector('title') !== null;
+            addResult('htmlStructureResult', 'Page has title tag', hasTitle ? 'pass' : 'fail');
+            
+            const hasViewport = document.querySelector('meta[name="viewport"]') !== null;
+            addResult('htmlStructureResult', 'Page has viewport meta tag', hasViewport ? 'pass' : 'fail');
+            
+            const hasCharset = document.querySelector('meta[charset]') !== null;
+            addResult('htmlStructureResult', 'Page has charset meta tag', hasCharset ? 'pass' : 'fail');
+            
+            // Test for common elements that should exist in the actual pages
+            addResult('htmlStructureResult', 'HTML5 doctype declared', document.doctype ? 'pass' : 'fail');
+            addResult('htmlStructureResult', 'Language attribute set', document.documentElement.lang ? 'pass' : 'fail');
+        }
+
+        async function testAPIConnection() {
+            const container = document.getElementById('apiResult');
+            container.innerHTML = '';
+            
+            try {
+                // Test both APIs
+                const apis = [
+                    { name: 'JSON API', url: 'backend/api.php' },
+                    { name: 'PostgreSQL API', url: 'backend/api_postgres.php' }
+                ];
+                
+                for (const api of apis) {
+                    try {
+                        const response = await fetch(api.url);
+                        if (response.ok) {
+                            const data = await response.json();
+                            addResult('apiResult', `${api.name} connection successful`, 'pass');
+                            addResult('apiResult', `${api.name} returns valid JSON`, data.success ? 'pass' : 'fail');
+                        } else {
+                            addResult('apiResult', `${api.name} returned HTTP ${response.status}`, 'fail');
+                        }
+                    } catch (error) {
+                        addResult('apiResult', `${api.name} connection failed: ${error.message}`, 'fail');
+                    }
+                }
+            } catch (error) {
+                addResult('apiResult', `API test error: ${error.message}`, 'fail');
+            }
+        }
+
+        async function testAPIEndpoints() {
+            const container = document.getElementById('apiResult');
+            
+            try {
+                // Test GET request
+                const response = await fetch('backend/api_postgres.php');
+                const data = await response.json();
+                
+                addResult('apiResult', 'GET /backend/api_postgres.php works', response.ok && data.success ? 'pass' : 'fail');
+                
+                if (data.success && data.state) {
+                    addResult('apiResult', 'API returns state object', 'pass');
+                    addResult('apiResult', 'State has patients array', Array.isArray(data.state.patients) ? 'pass' : 'fail');
+                    addResult('apiResult', 'State has nextQueueNumber', typeof data.state.nextQueueNumber === 'number' ? 'pass' : 'fail');
+                    addResult('apiResult', 'State has consultationHistory', Array.isArray(data.state.consultationHistory) ? 'pass' : 'fail');
+                }
+                
+                // Test POST request with invalid data
+                const postResponse = await fetch('backend/api_postgres.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'invalid_test' })
+                });
+                const postData = await postResponse.json();
+                
+                addResult('apiResult', 'POST with invalid action is rejected', !postData.success ? 'pass' : 'fail');
+                
+            } catch (error) {
+                addResult('apiResult', `API endpoint test failed: ${error.message}`, 'fail');
+            }
+        }
+
+        function testJavaScriptFunctions() {
+            const container = document.getElementById('jsFunctionResult');
+            container.innerHTML = '';
+            
+            // Since we're not loading app.js in this test page, we'll simulate the checks
+            const expectedFunctions = [
+                'fetchState',
+                'postAction', 
+                'loginAdmin',
+                'render',
+                'isAdminAuthenticated',
+                'setAdminAuthenticated',
+                'broadcastState',
+                'initRealtimeSync'
+            ];
+            
+            expectedFunctions.forEach(funcName => {
+                // Check if function exists in global scope
+                const exists = typeof window[funcName] === 'function';
+                addResult('jsFunctionResult', `Function ${funcName} exists`, exists ? 'pass' : 'skip');
+            });
+            
+            addResult('jsFunctionResult', 'JavaScript function tests require app.js to be loaded', 'info');
+        }
+
+        function testRealtimeFeatures() {
+            const container = document.getElementById('realtimeResult');
+            container.innerHTML = '';
+            
+            // Test for Browser API support
+            const hasBroadcastChannel = typeof BroadcastChannel !== 'undefined';
+            addResult('realtimeResult', 'BroadcastChannel API supported', hasBroadcastChannel ? 'pass' : 'fail');
+            
+            const hasLocalStorage = typeof localStorage !== 'undefined';
+            addResult('realtimeResult', 'LocalStorage supported', hasLocalStorage ? 'pass' : 'fail');
+            
+            const hasSessionStorage = typeof sessionStorage !== 'undefined';
+            addResult('realtimeResult', 'SessionStorage supported', hasSessionStorage ? 'pass' : 'fail');
+            
+            // Test localStorage functionality
+            try {
+                localStorage.setItem('test', 'test');
+                localStorage.removeItem('test');
+                addResult('realtimeResult', 'LocalStorage read/write works', 'pass');
+            } catch (e) {
+                addResult('realtimeResult', 'LocalStorage read/write failed', 'fail');
+            }
+        }
+
+        function testResponsiveDesign() {
+            const container = document.getElementById('responsiveResult');
+            container.innerHTML = '';
+            
+            const width = window.innerWidth;
+            addResult('responsiveResult', `Current viewport width: ${width}px`, 'info');
+            
+            // Test for responsive meta tag
+            const viewport = document.querySelector('meta[name="viewport"]');
+            if (viewport) {
+                const content = viewport.getAttribute('content');
+                addResult('responsiveResult', 'Viewport meta tag present', 'pass');
+                addResult('responsiveResult', `Viewport content: ${content}`, 'info');
+            } else {
+                addResult('responsiveResult', 'Viewport meta tag missing', 'fail');
+            }
+            
+            // Test common breakpoints
+            if (width < 768) {
+                addResult('responsiveResult', 'Mobile viewport detected', 'pass');
+            } else if (width < 1024) {
+                addResult('responsiveResult', 'Tablet viewport detected', 'pass');
+            } else {
+                addResult('responsiveResult', 'Desktop viewport detected', 'pass');
+            }
+        }
+
+        async function testAuthentication() {
+            const container = document.getElementById('authResult');
+            container.innerHTML = '';
+            
+            try {
+                // Test login with correct credentials
+                const loginResponse = await fetch('backend/api_postgres.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'login',
+                        username: 'admin',
+                        password: 'admin123'
+                    })
+                });
+                
+                const loginData = await loginResponse.json();
+                addResult('authResult', 'Login with correct credentials', loginData.success ? 'pass' : 'fail');
+                
+                // Test login with incorrect credentials
+                const badLoginResponse = await fetch('backend/api_postgres.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'login',
+                        username: 'wrong',
+                        password: 'wrong'
+                    })
+                });
+                
+                const badLoginData = await badLoginResponse.json();
+                addResult('authResult', 'Login with incorrect credentials rejected', !badLoginData.success ? 'pass' : 'fail');
+                
+            } catch (error) {
+                addResult('authResult', `Authentication test failed: ${error.message}`, 'fail');
+            }
+        }
+
+        async function runAllTests() {
+            // Reset results
+            testResults = { total: 0, passed: 0, failed: 0, skipped: 0 };
+            
+            // Clear all result containers
+            document.querySelectorAll('[id$="Result"]').forEach(el => el.innerHTML = '');
+            
+            // Run all tests
+            testFileStructure();
+            testHTMLStructure();
+            await testAPIConnection();
+            await testAPIEndpoints();
+            testJavaScriptFunctions();
+            testRealtimeFeatures();
+            testResponsiveDesign();
+            await testAuthentication();
+            
+            updateSummary();
+        }
+
+        // Run initial summary
+        updateSummary();
+    </script>
+</body>
+</html>

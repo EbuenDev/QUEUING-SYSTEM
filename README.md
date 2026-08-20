@@ -197,7 +197,7 @@ The current application uses a lightweight web architecture:
 ┌───────────────────────────────────────────┐
 │              PHP Backend                  │
 │                                           │
-│              api.php                      │
+│       api.php (JSON) / api_postgres.php   │
 │                                           │
 │  Authentication                           │
 │  Patient Management                       │
@@ -205,12 +205,19 @@ The current application uses a lightweight web architecture:
 │  Consultation Management                  │
 └───────────────────────┬───────────────────┘
                         │
-                        ▼
-┌───────────────────────────────────────────┐
-│              JSON Storage                 │
-│                                           │
-│              queue.json                   │
-└───────────────────────────────────────────┘
+            ┌───────────┴───────────┐
+            │                       │
+            ▼                       ▼
+┌─────────────────────┐   ┌─────────────────────┐
+│   JSON Storage      │   │   PostgreSQL DB     │
+│   (Legacy)          │   │   (Recommended)     │
+│                     │   │                     │
+│   queue.json        │   │   patients          │
+│                     │   │   consultation_     │
+│                     │   │   history          │
+│                     │   │   queue_           │
+│                     │   │   management       │
+└─────────────────────┘   └─────────────────────┘
 ```
 
 ---
@@ -222,7 +229,14 @@ QUEUING-SYSTEM/
 │
 ├── backend/
 │   ├── api.php
-│   └── queue.json
+│   ├── api_postgres.php
+│   ├── queue.json
+│   ├── config.php
+│   └── database/
+│       ├── schema.sql
+│       ├── config.php
+│       ├── Database.php
+│       └── SETUP.md
 │
 ├── src/
 │   └── images/
@@ -284,10 +298,12 @@ Consultation History
 * PHP
 * PHP Sessions
 * JSON API
+* PostgreSQL integration (new)
 
 ### Data Storage
 
-* JSON file storage using `queue.json`
+* JSON file storage using `queue.json` (legacy)
+* PostgreSQL database (recommended for production)
 
 ### Development Environment
 
@@ -297,6 +313,19 @@ The application can be run using a local PHP development environment such as:
 * XAMPP
 * PHP built-in development server
 * Apache with PHP
+
+### Database Setup (Recommended)
+
+The application now supports PostgreSQL for robust data storage. For production use, follow the database setup guide in `backend/database/SETUP.md`.
+
+**Quick Setup Steps:**
+1. Install PostgreSQL
+2. Enable PHP PostgreSQL extension
+3. Create database: `rhu_queue_system`
+4. Run schema: `backend/database/schema.sql`
+5. Configure connection in `backend/database/config.php`
+
+The application uses `api_postgres.php` for database operations while maintaining backward compatibility with the JSON-based system.
 
 ---
 
@@ -413,7 +442,7 @@ Before using the system in a real healthcare environment, additional security im
 
 Possible future improvements include:
 
-* [ ] Migrate JSON storage to MySQL/PostgreSQL
+* [x] Migrate JSON storage to MySQL/PostgreSQL
 * [ ] Migrate backend to Spring Boot
 * [ ] Implement stronger authentication
 * [ ] Add dedicated user roles and permissions
