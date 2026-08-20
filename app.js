@@ -684,7 +684,7 @@ function renderDoctorQueue() {
   }
 
   if (state.patients.length === 0) {
-    patientList.innerHTML = '<li class="empty-state">No patients have been added yet.</li>';
+    patientList.innerHTML = '<tr><td class="queue-table-empty" colspan="6">No patients have been added yet.</td></tr>';
     return;
   }
 
@@ -692,28 +692,27 @@ function renderDoctorQueue() {
   const normalPatients = state.patients.filter((patient) => patient.status !== 'follow-up');
   
   if (normalPatients.length === 0) {
-    patientList.innerHTML = '<li class="empty-state">No patients in normal queue.</li>';
+    patientList.innerHTML = '<tr><td class="queue-table-empty" colspan="6">No patients in normal queue.</td></tr>';
   } else {
     patientList.innerHTML = normalPatients
       .map((patient) => {
         const patientType = patient.patientStatus || patient.type || 'regular';
         const isCurrentPatient = patient.status === 'serving';
         return `
-        <li class="queue-item">
-          <div>
-            <strong>#${patient.queueNumber} — ${patient.name}</strong>
-            <div class="badge-group">
-              <span class="badge ${patient.status}">${patient.status}</span>
-              <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
+        <tr>
+          <td class="queue-table-number">#${patient.queueNumber}</td>
+          <td class="queue-table-name">${patient.name}</td>
+          <td><span class="badge ${patient.status}">${patient.status}</span></td>
+          <td><span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span></td>
+          <td>${patient.philHealthId || 'N/A'}</td>
+          <td>
+            <div class="actions">
+              <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>
+              <button class="btn btn-warning" data-doctor-action="skip" data-id="${patient.id}">Skip</button>
+              <button class="btn btn-secondary" data-doctor-action="recall" data-id="${patient.id}">Recall</button>
             </div>
-            <small>PH ID: ${patient.philHealthId || 'N/A'}</small>
-          </div>
-          <div class="actions">
-            <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>
-            <button class="btn btn-warning" data-doctor-action="skip" data-id="${patient.id}">Skip</button>
-            <button class="btn btn-secondary" data-doctor-action="recall" data-id="${patient.id}">Recall</button>
-          </div>
-        </li>
+          </td>
+        </tr>
       `;
       })
       .join('');
