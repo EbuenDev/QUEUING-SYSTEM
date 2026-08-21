@@ -1,0 +1,12 @@
+{
+  "name": "queuing-system-tests",
+  "private": true,
+  "description": "Unit tests for the RHU II patient queuing system.",
+  "scripts": {
+    "test": "node --test tests/",
+    "coverage": "node --test --experimental-test-coverage tests/"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.3"
+  }
+}
