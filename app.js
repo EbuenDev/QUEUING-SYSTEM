@@ -107,14 +107,14 @@ function initRealtimeSync() {
   // Initial fetch
   fetchState();
 
-  // Set up polling for LAN sync (every 5 seconds)
+  // Set up polling for LAN sync
   // This is necessary for multi-computer sync on LAN
   setInterval(() => {
     // Only fetch if page is visible to reduce unnecessary requests
     if (!document.hidden) {
       fetchState();
     }
-  }, 5000); // 5 second polling interval
+  }, 2000);
 }
 
 //This function fetches the current state of the queue from the backend API and updates the local state accordingly. It also handles any errors that may occur during the fetch operation.
@@ -151,6 +151,7 @@ async function postAction(action, payload = {}) {
     if (response.status === 401) {
       setAdminAuthenticated(false);
       setAdminView(false);
+      showAdminLoginError('Your session has expired. Please log in again.');
       return;
     }
 
@@ -193,6 +194,22 @@ async function loginAdmin(username, password) {
   } catch (error) {
     console.error('Unable to login as admin', error);
     return false;
+  }
+}
+
+async function logoutAdmin() {
+  try {
+    const apiUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/backend/api_postgres.php';
+    await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'logout' }),
+      cache: 'no-store',
+    });
+  } catch (error) {
+    console.error('Unable to log out', error);
   }
 }
 
@@ -261,12 +278,12 @@ function renderPatientBoard() {
           return `
           <li class="queue-item">
             <div>
-              <strong>#${patient.queueNumber} — ${patient.name}</strong>
+              <strong>#${patient.queueNumber} — ${escapeHtml(patient.name)}</strong>
               <small>Waiting for service</small>
             </div>
             <div class="badge-group">
               <span class="badge waiting">Waiting</span>
-              <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
+              <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
             </div>
           </li>
         `;
@@ -276,9 +293,10 @@ function renderPatientBoard() {
   }
 
   // Render follow-up patients
-  if (followUpSection) {
+  if (followUpSection && followUpList) {
     if (followUpPatients.length === 0) {
       followUpSection.hidden = true;
+      followUpList.innerHTML = '';
     } else {
       followUpSection.hidden = false;
       followUpList.innerHTML = followUpPatients
@@ -289,8 +307,8 @@ function renderPatientBoard() {
           return `
           <li class="queue-item">
             <div>
-              <strong>#${patient.queueNumber} — ${patient.name}</strong>
-              <small>${reasonText}</small>
+              <strong>#${patient.queueNumber} — ${escapeHtml(patient.name)}</strong>
+              <small>${escapeHtml(reasonText)}</small>
               <small>${statusText}</small>
             </div>
             <div class="badge-group">
@@ -329,11 +347,11 @@ function renderConsultationHistory() {
       (entry) => `
         <li class="queue-item">
           <div>
-            <strong>#${entry.queueNumber} — ${entry.name}</strong>
-            <small>${entry.finishedAt || 'Completed'}</small>
-            <small>PH ID: ${entry.philHealthId || 'N/A'}</small>
-            <small>ICD: ${entry.icdCode || 'N/A'}</small>
-            <small>Consultation: ${entry.consultationDetails || 'No notes recorded'}</small>
+            <strong>#${entry.queueNumber} — ${escapeHtml(entry.name)}</strong>
+            <small>${escapeHtml(entry.finishedAt || 'Completed')}</small>
+            <small>PH ID: ${escapeHtml(entry.philHealthId || 'N/A')}</small>
+            <small>ICD: ${escapeHtml(entry.icdCode || 'N/A')}</small>
+            <small>Consultation: ${escapeHtml(entry.consultationDetails || 'No notes recorded')}</small>
           </div>
           <div class="actions">
             <button class="btn btn-secondary" type="button" data-action="edit-history" data-id="${entry.id || ''}">Edit</button>
@@ -365,6 +383,32 @@ function openHistoryEditModal(id) {
   modal.hidden = false;
 }
 
+function initHistoryEditForm() {
+  const historyEditForm = document.getElementById('edit-history-form');
+  const cancelHistoryEditButton = document.getElementById('cancel-history-edit-btn');
+
+  if (historyEditForm) {
+    historyEditForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const historyId = document.getElementById('edit-history-id')?.value || '';
+      const icdCode = document.getElementById('edit-history-icd-code')?.value || '';
+      const consultationDetails = document.getElementById('edit-history-consultation')?.value || '';
+
+      if (!historyId) {
+        return;
+      }
+
+      postAction('edit-history', { id: historyId, icdCode, consultationDetails });
+      historyEditForm.reset();
+      closeHistoryEditModal();
+    });
+  }
+
+  if (cancelHistoryEditButton) {
+    cancelHistoryEditButton.addEventListener('click', closeHistoryEditModal);
+  }
+}
+
 function closeHistoryEditModal() {
   const modal = document.getElementById('edit-history-modal');
   if (modal) {
@@ -379,6 +423,16 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function patientTypeLabel(type) {
+  const labels = {
+    pwd: 'PWD',
+    senior: 'Senior',
+    emergency: 'Emergency',
+    regular: 'Regular',
+  };
+  return labels[type] || 'Regular';
 }
 
 function printConsultationHistory() {
@@ -470,13 +524,13 @@ function renderAdminQueue() {
       const patientType = currentServing.patientStatus || currentServing.type || 'regular';
       const philHealthStatus = currentServing.philHealthStatus || 'no-philhealth';
       adminCurrentPatient.innerHTML = `
-        <strong>#${currentServing.queueNumber} — ${currentServing.name}</strong>
+        <strong>#${currentServing.queueNumber} — ${escapeHtml(currentServing.name)}</strong>
         <div class="badge-group">
           <span class="badge ${currentServing.status}">${currentServing.status}</span>
-          <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
+          <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
           <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
         </div>
-        <small>PH ID: ${currentServing.philHealthId || 'N/A'}</small>
+        <small>PH ID: ${escapeHtml(currentServing.philHealthId || 'N/A')}</small>
       `;
     } else {
       adminCurrentPatient.innerHTML = `
@@ -498,13 +552,13 @@ function renderAdminQueue() {
       const patientType = nextPatient.patientStatus || nextPatient.type || 'regular';
       const philHealthStatus = nextPatient.philHealthStatus || 'no-philhealth';
       adminNextPatient.innerHTML = `
-        <strong>#${nextPatient.queueNumber} — ${nextPatient.name}</strong>
+        <strong>#${nextPatient.queueNumber} — ${escapeHtml(nextPatient.name)}</strong>
         <div class="badge-group">
           <span class="badge ${nextPatient.status}">${nextPatient.status}</span>
-          <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
+          <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
           <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
         </div>
-        <small>PH ID: ${nextPatient.philHealthId || 'N/A'}</small>
+        <small>PH ID: ${escapeHtml(nextPatient.philHealthId || 'N/A')}</small>
       `;
     } else {
       adminNextPatient.innerHTML = `
@@ -527,14 +581,14 @@ function renderAdminQueue() {
           return `
             <li class="queue-item">
               <div>
-                <strong>#${patient.queueNumber} — ${patient.name}</strong>
+                <strong>#${patient.queueNumber} — ${escapeHtml(patient.name)}</strong>
                 <div class="badge-group">
                   <span class="badge ${patient.status}">${patient.status}</span>
-                  <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
+                  <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
                   <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
-                  <span class="badge followup-reason">${followUpReason}</span>
+                  <span class="badge followup-reason">${escapeHtml(followUpReason)}</span>
                 </div>
-                <small>PH ID: ${patient.philHealthId || 'N/A'}</small>
+                <small>PH ID: ${escapeHtml(patient.philHealthId || 'N/A')}</small>
               </div>
               <div class="actions">
                 <button class="btn btn-primary" data-doctor-action="call-followup" data-id="${patient.id}">Call Patient</button>
@@ -573,13 +627,13 @@ function renderAdminQueue() {
         return `
           <li class="queue-item">
             <div>
-              <strong>#${patient.queueNumber} — ${patient.name}</strong>
+              <strong>#${patient.queueNumber} — ${escapeHtml(patient.name)}</strong>
               <div class="badge-group">
                 <span class="badge ${patient.status}">${patient.status}</span>
-                <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
+                <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
                 <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
               </div>
-              <small>PH ID: ${patient.philHealthId || 'N/A'}</small>
+              <small>PH ID: ${escapeHtml(patient.philHealthId || 'N/A')}</small>
             </div>
             <div class="actions">
               ${actionButtons.join('')}
@@ -620,19 +674,19 @@ function renderDoctorQueue() {
     if (servingPatient) {
       currentPatientCard.innerHTML = `
         <div class="doctor-current-patient-details">
-          <strong>#${servingPatient.queueNumber} — ${servingPatient.name}</strong>
+          <strong>#${servingPatient.queueNumber} — ${escapeHtml(servingPatient.name)}</strong>
           <div class="badge-group">
             <span class="badge serving">Serving</span>
-            <span class="badge type-${servingPatient.patientStatus || servingPatient.type || 'regular'}">${(servingPatient.patientStatus || servingPatient.type || 'regular') === 'pwd' ? 'PWD' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'senior' ? 'Senior' : (servingPatient.patientStatus || servingPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
+            <span class="badge type-${servingPatient.patientStatus || servingPatient.type || 'regular'}">${patientTypeLabel(servingPatient.patientStatus || servingPatient.type)}</span>
           </div>
           <small>Queue #${servingPatient.queueNumber}</small>
-          <small>PH ID: ${servingPatient.philHealthId || 'N/A'}</small>
+          <small>PH ID: ${escapeHtml(servingPatient.philHealthId || 'N/A')}</small>
         </div>
         <div class="doctor-note-fields">
           <label class="field-label" for="doctor-icd-code">ICD Code</label>
-          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${draftIcdCode || servingPatient.icdCode || ''}" />
+          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${escapeHtml(draftIcdCode || servingPatient.icdCode || '')}" />
           <label class="field-label" for="doctor-consultation-note">Consultation Details</label>
-          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient">${draftConsultationDetails || servingPatient.consultationDetails || ''}</textarea>
+          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient">${escapeHtml(draftConsultationDetails || servingPatient.consultationDetails || '')}</textarea>
         </div>
       `;
     } else {
@@ -647,9 +701,9 @@ function renderDoctorQueue() {
         </div>
         <div class="doctor-note-fields">
           <label class="field-label" for="doctor-icd-code">ICD Code</label>
-          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${draftIcdCode}" disabled />
+          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${escapeHtml(draftIcdCode)}" disabled />
           <label class="field-label" for="doctor-consultation-note">Consultation Details</label>
-          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient" disabled>${draftConsultationDetails}</textarea>
+          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient" disabled>${escapeHtml(draftConsultationDetails)}</textarea>
         </div>
       `;
     }
@@ -668,12 +722,12 @@ function renderDoctorQueue() {
   if (nextPatientCard) {
     if (nextPatient) {
       nextPatientCard.innerHTML = `
-        <strong>#${nextPatient.queueNumber} — ${nextPatient.name}</strong>
+        <strong>#${nextPatient.queueNumber} — ${escapeHtml(nextPatient.name)}</strong>
         <div class="badge-group">
           <span class="badge waiting">Waiting</span>
-          <span class="badge type-${nextPatient.patientStatus || nextPatient.type || 'regular'}">${(nextPatient.patientStatus || nextPatient.type || 'regular') === 'pwd' ? 'PWD' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'senior' ? 'Senior' : (nextPatient.patientStatus || nextPatient.type || 'regular') === 'emergency' ? 'Emergency' : 'Regular'}</span>
+          <span class="badge type-${nextPatient.patientStatus || nextPatient.type || 'regular'}">${patientTypeLabel(nextPatient.patientStatus || nextPatient.type)}</span>
         </div>
-        <small>PH ID: ${nextPatient.philHealthId || 'N/A'}</small>
+        <small>PH ID: ${escapeHtml(nextPatient.philHealthId || 'N/A')}</small>
       `;
     } else {
       nextPatientCard.innerHTML = `
@@ -683,15 +737,12 @@ function renderDoctorQueue() {
     }
   }
 
-  if (state.patients.length === 0) {
-    patientList.innerHTML = '<tr><td class="queue-table-empty" colspan="6">No patients have been added yet.</td></tr>';
-    return;
-  }
-
   // Only show non-follow-up patients in main list
   const normalPatients = state.patients.filter((patient) => patient.status !== 'follow-up');
-  
-  if (normalPatients.length === 0) {
+
+  if (state.patients.length === 0) {
+    patientList.innerHTML = '<tr><td class="queue-table-empty" colspan="6">No patients have been added yet.</td></tr>';
+  } else if (normalPatients.length === 0) {
     patientList.innerHTML = '<tr><td class="queue-table-empty" colspan="6">No patients in normal queue.</td></tr>';
   } else {
     patientList.innerHTML = normalPatients
@@ -701,10 +752,10 @@ function renderDoctorQueue() {
         return `
         <tr>
           <td class="queue-table-number">#${patient.queueNumber}</td>
-          <td class="queue-table-name">${patient.name}</td>
+          <td class="queue-table-name">${escapeHtml(patient.name)}</td>
           <td><span class="badge ${patient.status}">${patient.status}</span></td>
-          <td><span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span></td>
-          <td>${patient.philHealthId || 'N/A'}</td>
+          <td><span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span></td>
+          <td>${escapeHtml(patient.philHealthId || 'N/A')}</td>
           <td>
             <div class="actions">
               <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>
@@ -722,6 +773,7 @@ function renderDoctorQueue() {
   if (followUpSection && followUpPatientList) {
     if (followUpPatients.length === 0) {
       followUpSection.hidden = true;
+      followUpPatientList.innerHTML = '';
     } else {
       followUpSection.hidden = false;
       followUpPatientList.innerHTML = followUpPatients
@@ -732,12 +784,12 @@ function renderDoctorQueue() {
           return `
           <li class="queue-item">
             <div>
-              <strong>#${patient.queueNumber} — ${patient.name}</strong>
+              <strong>#${patient.queueNumber} — ${escapeHtml(patient.name)}</strong>
               <div class="badge-group">
                 <span class="badge follow-up">Follow-up</span>
-                <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : patientType === 'emergency' ? 'Emergency' : 'Regular'}</span>
+                <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
               </div>
-              <small>${reasonText}</small>
+              <small>${escapeHtml(reasonText)}</small>
               <small>${isReady ? '✓ Ready for Doctor' : 'Waiting for Procedure'}</small>
             </div>
             <div class="actions">
@@ -773,10 +825,10 @@ function renderBhwQueue() {
       return `
       <li class="queue-item">
         <div>
-          <strong>#${patient.queueNumber} — ${patient.name}</strong>
+          <strong>#${patient.queueNumber} — ${escapeHtml(patient.name)}</strong>
           <div class="badge-group">
             <span class="badge ${patient.status}">${patient.status}</span>
-            <span class="badge type-${patientType}">${patientType === 'pwd' ? 'PWD' : patientType === 'senior' ? 'Senior' : 'Regular'}</span>
+            <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
           </div>
         </div>
       </li>
@@ -903,8 +955,6 @@ function initAdminPage() {
   const editPatientStatusSelect = document.getElementById('edit-patient-status');
   const editPhilHealthStatusSelect = document.getElementById('edit-philhealth-status');
   const cancelEditButton = document.getElementById('cancel-edit-btn');
-  const adminHistoryEditForm = document.getElementById('edit-history-form');
-  const adminCancelHistoryEditButton = document.getElementById('cancel-history-edit-btn');
   const printConsultationButton = document.getElementById('print-consultation-btn');
   const serveNextButton = document.getElementById('serve-next-btn');
   const resetButton = document.getElementById('reset-btn');
@@ -959,26 +1009,7 @@ function initAdminPage() {
     });
   }
 
-  if (adminHistoryEditForm) {
-    adminHistoryEditForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      const historyId = document.getElementById('edit-history-id')?.value || '';
-      const icdCode = document.getElementById('edit-history-icd-code')?.value || '';
-      const consultationDetails = document.getElementById('edit-history-consultation')?.value || '';
-
-      if (!historyId) {
-        return;
-      }
-
-      postAction('edit-history', { id: historyId, icdCode, consultationDetails });
-      adminHistoryEditForm.reset();
-      closeHistoryEditModal();
-    });
-  }
-
-  if (adminCancelHistoryEditButton) {
-    adminCancelHistoryEditButton.addEventListener('click', closeHistoryEditModal);
-  }
+  initHistoryEditForm();
 
   if (printConsultationButton) {
     printConsultationButton.addEventListener('click', printConsultationHistory);
@@ -1133,8 +1164,8 @@ function initBhwPage() {
   if (addForm && addNameInput) {
     addForm.addEventListener('submit', (event) => {
       event.preventDefault();
-      const type = addForm.querySelector('input[name="patient-type"]:checked')?.value || 'regular';
-      addPatient(addNameInput.value, type);
+      const patientStatus = addForm.querySelector('input[name="patient-type"]:checked')?.value || 'regular';
+      addPatient({ name: addNameInput.value, patientStatus });
       addForm.reset();
     });
   }
@@ -1224,14 +1255,7 @@ function initDoctorPage() {
     });
   }
 
-  // Doctor page uses the same edit-history-form as admin page
-  // The event listeners are already set up in initAdminPage
-  // Just need to handle the cancel button for doctor page specifically
-  const doctorCancelHistoryEditButton = document.getElementById('cancel-history-edit-btn');
-
-  if (doctorCancelHistoryEditButton) {
-    doctorCancelHistoryEditButton.addEventListener('click', closeHistoryEditModal);
-  }
+  initHistoryEditForm();
 
   // Add click handler for edit-history button in consultation history
   document.addEventListener('click', (event) => {
@@ -1304,6 +1328,7 @@ function initAdminAuth() {
 
   if (logoutButton) {
     logoutButton.addEventListener('click', () => {
+      logoutAdmin();
       setAdminAuthenticated(false);
       setAdminView(false);
       showAdminLoginError('');
@@ -1337,16 +1362,4 @@ document.addEventListener('DOMContentLoaded', () => {
     initDoctorPage();
   }
 
-  const needsQueueSync = Boolean(
-    document.getElementById('patient-list') ||
-    document.getElementById('waiting-list') ||
-    document.getElementById('doctor-patient-list') ||
-    document.getElementById('consultation-history') ||
-    document.getElementById('bhw-patient-list')
-  );
-
-  if (needsQueueSync) {
-    fetchState();
-    setInterval(fetchState, 1000);
-  }
 });
