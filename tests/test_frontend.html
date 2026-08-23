@@ -188,17 +188,16 @@
             container.innerHTML = '';
             
             const requiredFiles = [
-                'index.html',
-                'admin.html', 
-                'doctor.html',
-                'bhw.html',
-                'app.js',
-                'styles.css',
-                'backend/api.php',
+                'public/index.html',
+                'public/admin.html',
+                'public/doctor.html',
+                'public/bhw.html',
+                'public/assets/app.js',
+                'public/assets/styles.css',
                 'backend/api_postgres.php',
-                'backend/database/schema.sql',
-                'backend/database/Database.php',
-                'backend/database/config.php'
+                'backend/schema.sql',
+                'backend/Database.php',
+                'backend/config.php'
             ];
 
             requiredFiles.forEach(file => {
@@ -235,8 +234,7 @@
             try {
                 // Test both APIs
                 const apis = [
-                    { name: 'JSON API', url: 'backend/api.php' },
-                    { name: 'PostgreSQL API', url: 'backend/api_postgres.php' }
+                    { name: 'PostgreSQL API', url: '../backend/api_postgres.php' }
                 ];
                 
                 for (const api of apis) {
@@ -263,7 +261,7 @@
             
             try {
                 // Test GET request
-                const response = await fetch('backend/api_postgres.php');
+                const response = await fetch('../backend/api_postgres.php');
                 const data = await response.json();
                 
                 addResult('apiResult', 'GET /backend/api_postgres.php works', response.ok && data.success ? 'pass' : 'fail');
@@ -276,7 +274,7 @@
                 }
                 
                 // Test POST request with invalid data
-                const postResponse = await fetch('backend/api_postgres.php', {
+                const postResponse = await fetch('../backend/api_postgres.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ action: 'invalid_test' })
@@ -372,7 +370,7 @@
             
             try {
                 // Test login with correct credentials
-                const loginResponse = await fetch('backend/api_postgres.php', {
+                const loginResponse = await fetch('../backend/api_postgres.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -386,7 +384,7 @@
                 addResult('authResult', 'Login with correct credentials', loginData.success ? 'pass' : 'fail');
                 
                 // Test login with incorrect credentials
-                const badLoginResponse = await fetch('backend/api_postgres.php', {
+                const badLoginResponse = await fetch('../backend/api_postgres.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

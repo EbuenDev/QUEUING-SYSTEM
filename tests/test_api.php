@@ -22,22 +22,20 @@ echo "<style>
 
 // Test both backends
 $backends = [
-    'json' => 'api.php',
-    'postgres' => 'api_postgres.php'
+    'postgres' => '../backend/api_postgres.php'
 ];
 
-$currentBackend = $_GET['backend'] ?? 'json';
+$currentBackend = $_GET['backend'] ?? 'postgres';
 if (!isset($backends[$currentBackend])) {
-    $currentBackend = 'json';
+    $currentBackend = 'postgres';
 }
 
 echo "<div class='stats'>";
 echo "<strong>Current Backend:</strong> " . strtoupper($currentBackend);
-echo " | <a href='?backend=json'>Test JSON Backend</a>";
 echo " | <a href='?backend=postgres'>Test PostgreSQL Backend</a>";
 echo "</div>";
 
-$apiUrl = 'backend/' . $backends[$currentBackend];
+$apiUrl = $backends[$currentBackend];
 
 // Test 1: Check if API file exists
 echo "<div class='test-section'>";
@@ -275,17 +273,16 @@ if ($currentBackend === 'postgres') {
 echo "<div class='test-section'>";
 echo "<h2>Test 8: File Structure Check</h2>";
 $requiredFiles = [
-    'index.html' => 'Patient Display',
-    'admin.html' => 'Admin Panel',
-    'doctor.html' => 'Doctor Panel',
-    'bhw.html' => 'BHW Panel',
-    'app.js' => 'JavaScript Application',
-    'styles.css' => 'Stylesheet',
-    'backend/api.php' => 'JSON API',
+    'public/index.html' => 'Patient Display',
+    'public/admin.html' => 'Admin Panel',
+    'public/doctor.html' => 'Doctor Panel',
+    'public/bhw.html' => 'BHW Panel',
+    'public/assets/app.js' => 'JavaScript Application',
+    'public/assets/styles.css' => 'Stylesheet',
     'backend/api_postgres.php' => 'PostgreSQL API',
-    'backend/database/schema.sql' => 'Database Schema',
-    'backend/database/Database.php' => 'Database Class',
-    'backend/database/config.php' => 'Database Config'
+    'backend/schema.sql' => 'Database Schema',
+    'backend/Database.php' => 'Database Class',
+    'backend/config.php' => 'Database Config'
 ];
 
 foreach ($requiredFiles as $file => $description) {

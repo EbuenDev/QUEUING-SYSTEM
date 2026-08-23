@@ -11,8 +11,8 @@ echo "<h1>PostgreSQL Database Connection Test</h1>";
 
 try {
     // Include database files
-    require_once 'backend/database/Database.php';
-    require_once 'backend/database/config.php';
+    require_once '../backend/Database.php';
+    require_once '../backend/config.php';
     
     echo "<p style='color: green;'>✓ Database files loaded successfully</p>";
     
@@ -96,7 +96,7 @@ try {
     echo "<ul>";
     echo "<li>Ensure PostgreSQL is installed and running</li>";
     echo "<li>Check that the database 'rhu_queue_system' exists</li>";
-    echo "<li>Verify your credentials in backend/database/config.php</li>";
+    echo "<li>Verify your credentials in backend/config.php</li>";
     echo "<li>Make sure the PHP PostgreSQL extension is enabled</li>";
     echo "<li>Run the schema.sql file to create the required tables</li>";
     echo "</ul>";

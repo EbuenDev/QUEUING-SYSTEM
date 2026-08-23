@@ -16,13 +16,6 @@ queue_cookie.txt
 .DS_Store
 Thumbs.db
 
-
 # Sensitive configuration
 backend/config.php
-
-# Patient/queue data
-backend/queue.json
-
-# Cookies
-cookies.txt
-queue_cookie.txt
+backend/Database.php

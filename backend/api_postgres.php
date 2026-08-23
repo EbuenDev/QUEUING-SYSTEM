@@ -31,14 +31,16 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once __DIR__ . '/database/Database.php';
-require_once __DIR__ . '/database/config.php';
+require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/config.php';
 
-$config = require __DIR__ . '/database/config.php';
+$config = require __DIR__ . '/config.php';
 
 $adminUsername = $config['admin_username'];
 $adminPassword = $config['admin_password'];
 $legacyAdminPass = $config['legacy_admin_password'];
+$doctorUsername = $config['doctor_username'];
+$doctorPassword = $config['doctor_password'];
 
 function getDefaultState(): array {
     return [
@@ -64,11 +66,11 @@ function loadStateFromDatabase(PDO $db): array {
             return [
                 'id' => $patient['id'],
                 'name' => $patient['name'],
-                'philHealthId' => $patient['philhealthid'],
+                'philHealthId' => $patient['philhealthid'] ?? '',
                 'queueNumber' => (int)$patient['queuenumber'],
                 'status' => $patient['status'],
                 'patientStatus' => $patient['patientstatus'],
-                'type' => $patient['type'],
+                'type' => $patient['patientstatus'], // Use patientStatus as type
                 'philHealthStatus' => $patient['philhealthstatus'],
                 'followUpStatus' => $patient['followupstatus'] ?? 'none',
                 'followUpReason' => $patient['followupreason'] ?? '',
@@ -123,6 +125,7 @@ function savePatientToDatabase(PDO $db, array $patient): void {
                              ON CONFLICT (id) DO UPDATE 
                              SET name = EXCLUDED.name,
                                  phil_health_id = EXCLUDED.phil_health_id,
+                                 queue_number = EXCLUDED.queue_number,
                                  status = EXCLUDED.status,
                                  patient_status = EXCLUDED.patient_status,
                                  phil_health_status = EXCLUDED.phil_health_status,
@@ -201,6 +204,10 @@ function isAdminAuthenticated(): bool {
     return !empty($_SESSION['admin_authenticated']);
 }
 
+function isDoctorAuthenticated(): bool {
+    return !empty($_SESSION['doctor_authenticated']);
+}
+
 try {
     $db = Database::getInstance()->getConnection();
 } catch (Exception $e) {
@@ -229,9 +236,15 @@ if (!is_array($payload)) {
 
 $action = $payload['action'] ?? '';
 $requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
+$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
     jsonResponse(['success' => false, 'message' => 'Admin authentication required'], 401);
+    exit;
+}
+
+if ($requiresDoctorAuth && !isDoctorAuthenticated()) {
+    jsonResponse(['success' => false, 'message' => 'Doctor authentication required'], 401);
     exit;
 }
 
@@ -254,6 +267,25 @@ try {
 
         case 'logout':
             unset($_SESSION['admin_authenticated']);
+            jsonResponse(['success' => true, 'message' => 'Logged out']);
+            break;
+
+        case 'doctor-login':
+            $username = trim((string) ($payload['username'] ?? ''));
+            $password = (string) ($payload['password'] ?? '');
+            $isValidLogin = ($username === $doctorUsername && $password === $doctorPassword);
+
+            if ($isValidLogin) {
+                $_SESSION['doctor_authenticated'] = true;
+                jsonResponse(['success' => true, 'message' => 'Login successful']);
+            } else {
+                $_SESSION['doctor_authenticated'] = false;
+                jsonResponse(['success' => false, 'message' => 'Invalid username or password'], 401);
+            }
+            break;
+
+        case 'doctor-logout':
+            unset($_SESSION['doctor_authenticated']);
             jsonResponse(['success' => true, 'message' => 'Logged out']);
             break;
 

@@ -3,7 +3,7 @@
 header('Content-Type: application/json');
 
 // Load environment variables
-$envFile = __DIR__ . '/.env';
+$envFile = __DIR__ . '/../.env';
 $config = [
     'db_host' => 'localhost',
     'db_port' => '5432',

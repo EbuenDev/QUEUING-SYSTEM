@@ -11,11 +11,25 @@ const ADMIN_CREDENTIALS = {
   password: 'admin123',
 };
 
+const DOCTOR_CREDENTIALS = {
+  username: 'doctor',
+  password: 'doctor123',
+};
+
 function isAdminAuthenticated() {
   try {
     return sessionStorage.getItem('queue-admin-auth') === 'true';
   } catch (error) {
     console.warn('Unable to read admin auth state', error);
+    return false;
+  }
+}
+
+function isDoctorAuthenticated() {
+  try {
+    return sessionStorage.getItem('queue-doctor-auth') === 'true';
+  } catch (error) {
+    console.warn('Unable to read doctor auth state', error);
     return false;
   }
 }
@@ -30,6 +44,18 @@ function setAdminAuthenticated(isAuthenticated) {
     }
   } catch (error) {
     console.warn('Unable to persist admin auth state', error);
+  }
+}
+
+function setDoctorAuthenticated(isAuthenticated) {
+  try {
+    if (isAuthenticated) {
+      sessionStorage.setItem('queue-doctor-auth', 'true');
+    } else {
+      sessionStorage.removeItem('queue-doctor-auth');
+    }
+  } catch (error) {
+    console.warn('Unable to persist doctor auth state', error);
   }
 }
 
@@ -52,8 +78,33 @@ function setAdminView(isAuthenticated) {
   }
 }
 
+function setDoctorView(isAuthenticated) {
+  const loginCard = document.getElementById('doctor-login-card');
+  const doctorPanel = document.getElementById('doctor-panel');
+  const logoutButton = document.getElementById('doctor-logout-btn');
+
+  if (loginCard) {
+    loginCard.hidden = isAuthenticated;
+  }
+
+  if (doctorPanel) {
+    doctorPanel.hidden = !isAuthenticated;
+  }
+
+  if (logoutButton) {
+    logoutButton.hidden = !isAuthenticated;
+  }
+}
+
 function showAdminLoginError(message) {
   const loginError = document.getElementById('login-error');
+  if (loginError) {
+    loginError.textContent = message;
+  }
+}
+
+function showDoctorLoginError(message) {
+  const loginError = document.getElementById('doctor-login-error');
   if (loginError) {
     loginError.textContent = message;
   }
@@ -121,7 +172,7 @@ function initRealtimeSync() {
 async function fetchState() {
   try {
     // Use absolute URL based on current location for LAN compatibility
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/backend/api_postgres.php';
+    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
     const response = await fetch(apiUrl, { cache: 'no-store' });
     const data = await response.json();
     if (data?.success && data.state) {
@@ -137,7 +188,7 @@ async function fetchState() {
 async function postAction(action, payload = {}) {
   try {
     // Use absolute URL based on current location for LAN compatibility
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/backend/api_postgres.php';
+    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -152,6 +203,9 @@ async function postAction(action, payload = {}) {
       setAdminAuthenticated(false);
       setAdminView(false);
       showAdminLoginError('Your session has expired. Please log in again.');
+      setDoctorAuthenticated(false);
+      setDoctorView(false);
+      showDoctorLoginError('Your session has expired. Please log in again.');
       return;
     }
 
@@ -171,7 +225,7 @@ async function postAction(action, payload = {}) {
 async function loginAdmin(username, password) {
   try {
     // Use absolute URL based on current location for LAN compatibility
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/backend/api_postgres.php';
+    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -199,13 +253,57 @@ async function loginAdmin(username, password) {
 
 async function logoutAdmin() {
   try {
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '') + '/backend/api_postgres.php';
+    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
     await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ action: 'logout' }),
+      cache: 'no-store',
+    });
+  } catch (error) {
+    console.error('Unable to log out', error);
+  }
+}
+
+async function loginDoctor(username, password) {
+  try {
+    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'doctor-login', username, password }),
+      cache: 'no-store',
+    });
+
+    const data = await response.json();
+    if (response.ok && data?.success) {
+      setDoctorAuthenticated(true);
+      setDoctorView(true);
+      fetchState();
+      window.location.reload();
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('Unable to login as doctor', error);
+    return false;
+  }
+}
+
+async function logoutDoctor() {
+  try {
+    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
+    await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ action: 'doctor-logout' }),
       cache: 'no-store',
     });
   } catch (error) {
@@ -1341,6 +1439,44 @@ function initAdminAuth() {
   setAdminView(isAdminAuthenticated());
 }
 
+function initDoctorAuth() {
+  const loginForm = document.getElementById('doctor-login-form');
+  const usernameInput = document.getElementById('doctor-username');
+  const passwordInput = document.getElementById('doctor-password');
+  const logoutButton = document.getElementById('doctor-logout-btn');
+
+  if (loginForm) {
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      showDoctorLoginError('');
+
+      const username = usernameInput?.value.trim() || '';
+      const password = passwordInput?.value || '';
+      const isAuthenticated = await loginDoctor(username, password);
+
+      if (!isAuthenticated) {
+        showDoctorLoginError('Invalid username or password.');
+      } else {
+        loginForm.reset();
+      }
+    });
+  }
+
+  if (logoutButton) {
+    logoutButton.addEventListener('click', async () => {
+      await logoutDoctor();
+      setDoctorAuthenticated(false);
+      setDoctorView(false);
+      showDoctorLoginError('');
+      if (usernameInput) {
+        usernameInput.focus();
+      }
+    });
+  }
+
+  setDoctorView(isDoctorAuthenticated());
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initRealtimeSync();
   updateLiveClock();
@@ -1360,6 +1496,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (document.getElementById('doctor-patient-list')) {
     initDoctorPage();
+  }
+
+  if (document.getElementById('doctor-login-form')) {
+    initDoctorAuth();
   }
 
 });

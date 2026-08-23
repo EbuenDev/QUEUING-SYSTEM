@@ -18,10 +18,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-require_once 'backend/database/Database.php';
-require_once 'backend/database/config.php';
+require_once '../backend/Database.php';
+require_once '../backend/config.php';
 
-$config = require __DIR__ . '/backend/database/config.php';
+$config = require __DIR__ . '/../backend/config.php';
 
 $adminUsername = $config['admin_username'];
 $adminPassword = $config['admin_password'];
