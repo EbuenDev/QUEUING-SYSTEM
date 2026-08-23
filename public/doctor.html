@@ -17,15 +17,27 @@
     </div>
     </div>
     <div class="topbar-actions">
-        <button id="doctor-logout-btn" class="nav-link logout-btn" type="button" hidden>Log out</button>
-        <a class="nav-link" href="index.html">Patient Display</a>
+        <button id="hamburger-menu-btn" class="hamburger-btn" type="button" aria-label="Menu">
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+        </button>
+        <div id="hamburger-menu" class="hamburger-menu" hidden>
+            <ul class="hamburger-menu-list">
+                <li><a href="#" id="menu-consultation-history" class="hamburger-menu-link">Consultation History</a></li>
+                <li><a href="index.html" class="hamburger-menu-link">Patient Display</a></li>
+                <li><button id="menu-logout" class="hamburger-menu-link logout-link">Logout</button></li>
+            </ul>
+        </div>
     </div>
 </header>
 
-<main class="board admin-board">
-    <section id="doctor-login-card" class="card auth-card">
-        <h2>Doctor Login</h2>
-        <p class="muted">Sign in to manage patients.</p>
+<main class="board admin-board" id="doctor-main-board">
+    <section id="doctor-login-card" class="card auth-card doctor-login-card">
+        <div class="doctor-greeting">
+            <h2>Welcome back!</h2>
+            <p class="doctor-name">Doc. Renz Sale</p>
+        </div>
         <form id="doctor-login-form" class="auth-form" method="post" action="">
             <input id="doctor-username" name="username" type="text" placeholder="Username" autocomplete="username" required />
             <input id="doctor-password" name="password" type="password" placeholder="Password" autocomplete="current-password" required />
@@ -89,45 +101,45 @@
             <ul id="doctor-followup-list" class="queue-list admin-list"></ul>
         </section>
 
-        <section class="card full-width">
-            <div id="edit-history-modal" class="card edit-modal" hidden>
-                <h3>Edit Recent Checkup</h3>
-                <form id="edit-history-form" class="patient-form" method="post" action="">
-                    <input id="edit-history-id" type="hidden" />
-                    <input id="edit-history-icd-code" name="icdCode" type="text" placeholder="ICD Code" required />
-                    <textarea id="edit-history-consultation" name="consultationDetails" rows="4" placeholder="Consultation details"></textarea>
-                    <div class="toolbar">
-                        <button type="submit" class="btn btn-primary">Save Changes</button>
-                        <button type="button" id="cancel-history-edit-btn" class="btn btn-secondary">Cancel</button>
-                    </div>
-                </form>
-            </div>
+        <div id="edit-history-modal" class="card edit-modal" hidden>
+            <h3>Edit Recent Checkup</h3>
+            <form id="edit-history-form" class="patient-form" method="post" action="">
+                <input id="edit-history-id" type="hidden" />
+                <input id="edit-history-icd-code" name="icdCode" type="text" placeholder="ICD Code" required />
+                <textarea id="edit-history-consultation" name="consultationDetails" rows="4" placeholder="Consultation details"></textarea>
+                <div class="toolbar">
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="button" id="cancel-history-edit-btn" class="btn btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
 
-            <div id="followup-modal" class="card edit-modal" hidden>
-                <h3>Send to Follow-up</h3>
-                <p id="followup-patient-name" class="muted"></p>
-                <form id="followup-form" class="patient-form" method="post" action="">
-                    <input id="followup-patient-id" type="hidden" />
-                    <label for="followup-reason">Follow-up Reason:</label>
-                    <select id="followup-reason" name="followUpReason" required>
-                        <option value="Laboratory">Laboratory</option>
-                        <option value="Pharmacy">Pharmacy</option>
-                        <option value="X-Ray">X-Ray</option>
-                        <option value="Other">Other</option>
-                    </select>
-                    <div class="toolbar">
-                        <button type="submit" class="btn btn-primary">Confirm</button>
-                        <button type="button" id="cancel-followup-btn" class="btn btn-secondary">Cancel</button>
-                    </div>
-                </form>
-            </div>
+        <div id="followup-modal" class="card edit-modal" hidden>
+            <h3>Send to Follow-up</h3>
+            <p id="followup-patient-name" class="muted"></p>
+            <form id="followup-form" class="patient-form" method="post" action="">
+                <input id="followup-patient-id" type="hidden" />
+                <label for="followup-reason">Follow-up Reason:</label>
+                <select id="followup-reason" name="followUpReason" required>
+                    <option value="Laboratory">Laboratory</option>
+                    <option value="Pharmacy">Pharmacy</option>
+                    <option value="X-Ray">X-Ray</option>
+                    <option value="Other">Other</option>
+                </select>
+                <div class="toolbar">
+                    <button type="submit" class="btn btn-primary">Confirm</button>
+                    <button type="button" id="cancel-followup-btn" class="btn btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </section>
 
-            <div class="section-header">
-                <h2>Consultation History</h2>
-                <span id="history-count" class="pill">0 entries</span>
-            </div>
-            <ul id="consultation-history" class="queue-list"></ul>
-        </section>
+    <section id="consultation-history-section" class="card full-width" hidden>
+        <div class="section-header">
+            <h2>Consultation History</h2>
+            <span id="history-count" class="pill">0 entries</span>
+        </div>
+        <ul id="consultation-history" class="queue-list"></ul>
     </section>
     </main>
 

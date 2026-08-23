@@ -82,6 +82,9 @@ function setDoctorView(isAuthenticated) {
   const loginCard = document.getElementById('doctor-login-card');
   const doctorPanel = document.getElementById('doctor-panel');
   const logoutButton = document.getElementById('doctor-logout-btn');
+  const mainBoard = document.getElementById('doctor-main-board');
+  const hamburgerBtn = document.getElementById('hamburger-menu-btn');
+  const hamburgerMenu = document.getElementById('hamburger-menu');
 
   if (loginCard) {
     loginCard.hidden = isAuthenticated;
@@ -93,6 +96,22 @@ function setDoctorView(isAuthenticated) {
 
   if (logoutButton) {
     logoutButton.hidden = !isAuthenticated;
+  }
+
+  if (hamburgerBtn) {
+    hamburgerBtn.hidden = !isAuthenticated;
+  }
+
+  if (hamburgerMenu) {
+    hamburgerMenu.hidden = true;
+  }
+
+  if (mainBoard) {
+    if (!isAuthenticated) {
+      mainBoard.classList.add('centered');
+    } else {
+      mainBoard.classList.remove('centered');
+    }
   }
 }
 
@@ -172,7 +191,11 @@ function initRealtimeSync() {
 async function fetchState() {
   try {
     // Use absolute URL based on current location for LAN compatibility
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
+    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
+    if (path === '/' || path === '') {
+      path = '';
+    }
+    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
     const response = await fetch(apiUrl, { cache: 'no-store' });
     const data = await response.json();
     if (data?.success && data.state) {
@@ -188,7 +211,11 @@ async function fetchState() {
 async function postAction(action, payload = {}) {
   try {
     // Use absolute URL based on current location for LAN compatibility
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
+    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
+    if (path === '/' || path === '') {
+      path = '';
+    }
+    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -225,7 +252,11 @@ async function postAction(action, payload = {}) {
 async function loginAdmin(username, password) {
   try {
     // Use absolute URL based on current location for LAN compatibility
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
+    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
+    if (path === '/' || path === '') {
+      path = '';
+    }
+    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -253,7 +284,11 @@ async function loginAdmin(username, password) {
 
 async function logoutAdmin() {
   try {
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
+    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
+    if (path === '/' || path === '') {
+      path = '';
+    }
+    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
     await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -269,7 +304,11 @@ async function logoutAdmin() {
 
 async function loginDoctor(username, password) {
   try {
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
+    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
+    if (path === '/' || path === '') {
+      path = '';
+    }
+    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -297,7 +336,11 @@ async function loginDoctor(username, password) {
 
 async function logoutDoctor() {
   try {
-    const apiUrl = window.location.origin + window.location.pathname.replace(/\/public\/[^/]*$/, '') + '/backend/api_postgres.php';
+    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
+    if (path === '/' || path === '') {
+      path = '';
+    }
+    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
     await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -1468,13 +1511,75 @@ function initDoctorAuth() {
       setDoctorAuthenticated(false);
       setDoctorView(false);
       showDoctorLoginError('');
-      if (usernameInput) {
-        usernameInput.focus();
-      }
+      setTimeout(() => {
+        if (usernameInput) {
+          usernameInput.focus();
+        }
+      }, 100);
     });
   }
 
   setDoctorView(isDoctorAuthenticated());
+}
+
+function initHamburgerMenu() {
+  const hamburgerBtn = document.getElementById('hamburger-menu-btn');
+  const hamburgerMenu = document.getElementById('hamburger-menu');
+  const consultationHistoryLink = document.getElementById('menu-consultation-history');
+  const menuLogoutBtn = document.getElementById('menu-logout');
+  const consultationHistorySection = document.getElementById('consultation-history-section');
+
+  // Initially hide hamburger menu if not authenticated
+  if (hamburgerBtn && !isDoctorAuthenticated()) {
+    hamburgerBtn.hidden = true;
+  }
+  if (hamburgerMenu && !isDoctorAuthenticated()) {
+    hamburgerMenu.hidden = true;
+  }
+
+  if (hamburgerBtn && hamburgerMenu) {
+    // Toggle menu visibility
+    hamburgerBtn.addEventListener('click', () => {
+      hamburgerMenu.hidden = !hamburgerMenu.hidden;
+      hamburgerBtn.classList.toggle('active', !hamburgerMenu.hidden);
+    });
+
+    // Close menu when clicking outside
+    document.addEventListener('click', (event) => {
+      if (!hamburgerBtn.contains(event.target) && !hamburgerMenu.contains(event.target)) {
+        hamburgerMenu.hidden = true;
+        hamburgerBtn.classList.remove('active');
+      }
+    });
+
+    // Consultation history link handler
+    if (consultationHistoryLink && consultationHistorySection) {
+      consultationHistoryLink.addEventListener('click', (event) => {
+        event.preventDefault();
+        consultationHistorySection.hidden = !consultationHistorySection.hidden;
+        hamburgerMenu.hidden = true;
+        hamburgerBtn.classList.remove('active');
+      });
+    }
+
+    // Menu logout button handler
+    if (menuLogoutBtn) {
+      menuLogoutBtn.addEventListener('click', async () => {
+        await logoutDoctor();
+        setDoctorAuthenticated(false);
+        setDoctorView(false);
+        showDoctorLoginError('');
+        hamburgerMenu.hidden = true;
+        hamburgerBtn.classList.remove('active');
+        setTimeout(() => {
+          const usernameInput = document.getElementById('doctor-username');
+          if (usernameInput) {
+            usernameInput.focus();
+          }
+        }, 100);
+      });
+    }
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -1500,6 +1605,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (document.getElementById('doctor-login-form')) {
     initDoctorAuth();
+  }
+
+  if (document.getElementById('hamburger-menu-btn')) {
+    initHamburgerMenu();
   }
 
 });

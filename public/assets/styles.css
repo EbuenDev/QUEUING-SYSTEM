@@ -649,6 +649,176 @@ body {
   }
 }
 
+/* Hamburger Menu Styles */
+.hamburger-btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  z-index: 1000;
+  transition: transform 0.3s ease;
+}
+
+.hamburger-btn:hover {
+  transform: scale(1.1);
+}
+
+.hamburger-line {
+  width: 32px;
+  height: 3px;
+  background: white;
+  border-radius: 3px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
+}
+
+.hamburger-btn.active .hamburger-line:nth-child(1) {
+  transform: translateY(10px) rotate(45deg);
+}
+
+.hamburger-btn.active .hamburger-line:nth-child(2) {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.hamburger-btn.active .hamburger-line:nth-child(3) {
+  transform: translateY(-10px) rotate(-45deg);
+}
+
+.hamburger-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: rgba(24, 50, 75, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  min-width: 220px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  z-index: 999;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.hamburger-menu:not([hidden]) {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  visibility: visible;
+}
+
+.hamburger-menu-list {
+  list-style: none;
+  margin: 0;
+  padding: 12px 0;
+}
+
+.hamburger-menu-list li {
+  margin: 0;
+}
+
+.hamburger-menu-link {
+  display: block;
+  width: 100%;
+  padding: 14px 24px;
+  color: white;
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.hamburger-menu-link::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 3px;
+  background: rgba(255, 255, 255, 0.3);
+  transform: scaleY(0);
+  transition: transform 0.2s ease;
+}
+
+.hamburger-menu-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  padding-left: 28px;
+}
+
+.hamburger-menu-link:hover::before {
+  transform: scaleY(1);
+}
+
+.hamburger-menu-link.logout-link {
+  color: #facc15;
+  font-weight: 600;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 8px;
+  padding-top: 16px;
+}
+
+.hamburger-menu-link.logout-link:hover {
+  background: rgba(250, 204, 21, 0.15);
+  color: #fde047;
+}
+
+.hamburger-menu-link.logout-link::before {
+  background: #facc15;
+}
+
+.topbar-actions {
+  position: relative;
+}
+
+/* Doctor Login Card Styles */
+.doctor-login-card {
+  max-width: 480px;
+  margin: 60px auto;
+  padding: 48px 40px;
+  text-align: center;
+}
+
+.doctor-greeting {
+  margin-bottom: 32px;
+}
+
+.doctor-greeting h2 {
+  margin: 0 0 8px 0;
+  font-size: 2rem;
+  color: #18324b;
+  font-weight: 600;
+}
+
+.doctor-name {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #5f7794;
+  font-weight: 500;
+}
+
+.admin-board.centered {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: calc(100vh - 120px);
+  padding-top: 40px;
+}
+
 @media (max-width: 480px) {
   .board {
     padding: 12px;
@@ -656,6 +826,19 @@ body {
 
   .card {
     padding: 14px;
+  }
+
+  .doctor-login-card {
+    padding: 32px 24px;
+    margin: 40px auto;
+  }
+
+  .doctor-greeting h2 {
+    font-size: 1.5rem;
+  }
+
+  .doctor-name {
+    font-size: 1rem;
   }
 
   .large-number {
