@@ -19,13 +19,139 @@ body {
   padding-bottom: 72px;
 }
 
+.doctor-page {
+  background: linear-gradient(135deg, #18324b, #0f2235);
+}
+
+.doctor-page .card {
+  background: rgba(255, 255, 255, 0.95);
+  color: #18324b;
+}
+
+.doctor-page .doctor-login-card {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  border-radius: 24px;
+  position: relative;
+  overflow: hidden;
+  color: white;
+}
+
+.doctor-page .doctor-greeting h2 {
+  color: white;
+}
+
+.doctor-page .doctor-name {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.doctor-page .section-header h2 {
+  color: #18324b;
+}
+
+.doctor-page .queue-item {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(24, 50, 75, 0.2);
+}
+
+.doctor-page .queue-item strong {
+  color: #18324b;
+}
+
+.doctor-page .queue-item small {
+  color: #5f7794;
+}
+
+.doctor-page .queue-table-wrap {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(24, 50, 75, 0.2);
+}
+
+.doctor-page .queue-table thead th {
+  background: rgba(24, 50, 75, 0.05);
+  color: #18324b;
+  border-bottom-color: rgba(24, 50, 75, 0.2);
+}
+
+.doctor-page .queue-table tbody td {
+  color: #18324b;
+}
+
+.doctor-page .queue-table tbody tr {
+  background: rgba(216, 244, 248, 0.5);
+}
+
+.doctor-page .queue-table tbody tr:nth-child(even) {
+  background: rgba(234, 249, 251, 0.5);
+}
+
+.doctor-page .queue-table tbody tr:hover {
+  background: rgba(196, 237, 244, 0.6);
+}
+
+.doctor-page .edit-modal {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(24, 50, 75, 0.2);
+}
+
+.doctor-page .edit-modal h3 {
+  color: #18324b;
+}
+
+.doctor-page .patient-form input,
+.doctor-page .patient-form select,
+.doctor-page .doctor-note-fields input,
+.doctor-page .doctor-note-fields textarea {
+  background: rgba(255, 255, 255, 0.9);
+  color: #18324b;
+  border-color: rgba(24, 50, 75, 0.2);
+}
+
+.doctor-page .pill {
+  background: rgba(24, 50, 75, 0.1);
+  color: #18324b;
+}
+
+.doctor-page .auth-form input {
+  background: rgba(255, 255, 255, 0.9);
+  color: #18324b;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.doctor-page .doctor-login-card .auth-form input {
+  background: rgba(255, 255, 255, 0.95);
+  color: #18324b;
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.doctor-page .doctor-login-card .btn-primary {
+  background: white;
+  color: #18324b;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.doctor-page .doctor-login-card .btn-primary:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.doctor-page .auth-error {
+  color: #b91c1c;
+}
+
+.doctor-page .doctor-login-card .auth-error {
+  color: #fecaca;
+}
+
 .topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 24px 32px;
-  background: #18324b;
-  color: white;
+  background: white;
+  color: #18324b;
   gap: 16px;
 }
 
@@ -77,9 +203,9 @@ body {
 }
 
 .nav-link {
-  color: white;
+  color: #18324b;
   text-decoration: none;
-  background: rgba(255,255,255,0.16);
+  background: rgba(24, 50, 75, 0.1);
   padding: 10px 16px;
   border-radius: 999px;
   border: none;
@@ -259,6 +385,7 @@ body {
 
 .btn-primary {
   background: #2563eb;
+  margin-top: 30px;
   color: white;
 }
 
@@ -568,6 +695,10 @@ body {
   pointer-events: none;
 }
 
+.doctor-page .site-credit {
+  color: rgba(255, 255, 255, 0.6);
+}
+
 @media (max-width: 760px) {
   .board {
     grid-template-columns: 1fr;
@@ -671,7 +802,7 @@ body {
 .hamburger-line {
   width: 32px;
   height: 3px;
-  background: white;
+  background: #18324b;
   border-radius: 3px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   transform-origin: center;
@@ -694,15 +825,15 @@ body {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  background: rgba(24, 50, 75, 0.85);
+  background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   min-width: 220px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   z-index: 999;
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(24, 50, 75, 0.1);
   opacity: 0;
   transform: translateY(-10px) scale(0.95);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -731,7 +862,7 @@ body {
   display: block;
   width: 100%;
   padding: 14px 24px;
-  color: white;
+  color: #18324b;
   text-decoration: none;
   background: transparent;
   border: none;
@@ -750,13 +881,13 @@ body {
   top: 0;
   height: 100%;
   width: 3px;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(24, 50, 75, 0.3);
   transform: scaleY(0);
   transition: transform 0.2s ease;
 }
 
 .hamburger-menu-link:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(24, 50, 75, 0.05);
   padding-left: 28px;
 }
 
@@ -767,14 +898,14 @@ body {
 .hamburger-menu-link.logout-link {
   color: #facc15;
   font-weight: 600;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid rgba(24, 50, 75, 0.1);
   margin-top: 8px;
   padding-top: 16px;
 }
 
 .hamburger-menu-link.logout-link:hover {
-  background: rgba(250, 204, 21, 0.15);
-  color: #fde047;
+  background: rgba(250, 204, 21, 0.1);
+  color: #facc15;
 }
 
 .hamburger-menu-link.logout-link::before {
@@ -791,6 +922,23 @@ body {
   margin: 60px auto;
   padding: 48px 40px;
   text-align: center;
+}
+
+.doctor-page .doctor-login-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.doctor-page .doctor-login-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .doctor-greeting {
@@ -829,6 +977,11 @@ body {
   }
 
   .doctor-login-card {
+    padding: 32px 24px;
+    margin: 40px auto;
+  }
+
+  .doctor-page .doctor-login-card {
     padding: 32px 24px;
     margin: 40px auto;
   }
