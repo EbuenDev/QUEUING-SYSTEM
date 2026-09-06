@@ -19,3 +19,22 @@ Thumbs.db
 # Sensitive configuration
 backend/config.php
 backend/Database.php
+
+# PostgreSQL data directories
+postgres_data/
+data/
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Devin (AI assistant)
+.devin/

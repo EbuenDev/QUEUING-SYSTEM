@@ -42,6 +42,57 @@ $legacyAdminPass = $config['legacy_admin_password'];
 $doctorUsername = $config['doctor_username'];
 $doctorPassword = $config['doctor_password'];
 
+// User management functions
+function authenticateUser(PDO $db, string $username, string $password): ?array {
+    try {
+        $stmt = $db->prepare("SELECT id, username, password_hash, full_name, role, is_active FROM users WHERE username = :username");
+        $stmt->execute([':username' => $username]);
+        $user = $stmt->fetch();
+
+        if ($user && $user['is_active'] && password_verify($password, $user['password_hash'])) {
+            return [
+                'id' => $user['id'],
+                'username' => $user['username'],
+                'full_name' => $user['full_name'],
+                'role' => $user['role']
+            ];
+        }
+        return null;
+    } catch (PDOException $e) {
+        error_log('User authentication error: ' . $e->getMessage());
+        return null;
+    }
+}
+
+function isSuperAdminAuthenticated(PDO $db): bool {
+    if (empty($_SESSION['user_id']) || empty($_SESSION['user_role'])) {
+        return false;
+    }
+    return $_SESSION['user_role'] === 'super_admin';
+}
+
+function isAdminAuthenticated(): bool {
+    // Check both old session-based and new database-based authentication
+    if (!empty($_SESSION['admin_authenticated'])) {
+        return true;
+    }
+    if (!empty($_SESSION['user_role']) && in_array($_SESSION['user_role'], ['admin', 'super_admin'])) {
+        return true;
+    }
+    return false;
+}
+
+function isDoctorAuthenticated(): bool {
+    // Check both old session-based and new database-based authentication
+    if (!empty($_SESSION['doctor_authenticated'])) {
+        return true;
+    }
+    if (!empty($_SESSION['user_role']) && $_SESSION['user_role'] === 'doctor') {
+        return true;
+    }
+    return false;
+}
+
 function getDefaultState(): array {
     return [
         'patients' => [],
@@ -200,13 +251,7 @@ function jsonResponse(array $payload, int $status = 200): void {
     echo json_encode($payload);
 }
 
-function isAdminAuthenticated(): bool {
-    return !empty($_SESSION['admin_authenticated']);
-}
 
-function isDoctorAuthenticated(): bool {
-    return !empty($_SESSION['doctor_authenticated']);
-}
 
 try {
     $db = Database::getInstance()->getConnection();
@@ -237,6 +282,7 @@ if (!is_array($payload)) {
 $action = $payload['action'] ?? '';
 $requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
 $requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor'], true);
+$requiresSuperAdminAuth = in_array($action, ['create-user', 'list-users', 'update-user', 'delete-user'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
     jsonResponse(['success' => false, 'message' => 'Admin authentication required'], 401);
@@ -248,11 +294,30 @@ if ($requiresDoctorAuth && !isDoctorAuthenticated()) {
     exit;
 }
 
+if ($requiresSuperAdminAuth && !isSuperAdminAuthenticated($db)) {
+    jsonResponse(['success' => false, 'message' => 'Super admin authentication required'], 401);
+    exit;
+}
+
 try {
     switch ($action) {
         case 'login':
             $username = trim((string) ($payload['username'] ?? ''));
             $password = (string) ($payload['password'] ?? '');
+
+            // Try database authentication first
+            $user = authenticateUser($db, $username, $password);
+            if ($user && in_array($user['role'], ['admin', 'super_admin'])) {
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['username'] = $user['username'];
+                $_SESSION['full_name'] = $user['full_name'];
+                $_SESSION['user_role'] = $user['role'];
+                $_SESSION['admin_authenticated'] = true;
+                jsonResponse(['success' => true, 'message' => 'Login successful', 'user' => $user]);
+                break;
+            }
+
+            // Fallback to old config-based authentication
             $isValidLogin = ($username === $adminUsername && $password === $adminPassword)
                 || ($username === $adminUsername && $password === $legacyAdminPass);
 
@@ -273,6 +338,20 @@ try {
         case 'doctor-login':
             $username = trim((string) ($payload['username'] ?? ''));
             $password = (string) ($payload['password'] ?? '');
+
+            // Try database authentication first
+            $user = authenticateUser($db, $username, $password);
+            if ($user && $user['role'] === 'doctor') {
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['username'] = $user['username'];
+                $_SESSION['full_name'] = $user['full_name'];
+                $_SESSION['user_role'] = $user['role'];
+                $_SESSION['doctor_authenticated'] = true;
+                jsonResponse(['success' => true, 'message' => 'Login successful', 'user' => $user]);
+                break;
+            }
+
+            // Fallback to old config-based authentication
             $isValidLogin = ($username === $doctorUsername && $password === $doctorPassword);
 
             if ($isValidLogin) {
@@ -700,6 +779,131 @@ try {
 
             $state = loadStateFromDatabase($db);
             jsonResponse(['success' => true, 'state' => $state]);
+            break;
+
+        // User management endpoints (super admin only)
+        case 'list-users':
+            try {
+                $stmt = $db->prepare("SELECT id, username, full_name, role, is_active, created_at FROM users ORDER BY created_at DESC");
+                $stmt->execute();
+                $users = $stmt->fetchAll();
+                jsonResponse(['success' => true, 'users' => $users]);
+            } catch (PDOException $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to fetch users'], 500);
+            }
+            break;
+
+        case 'create-user':
+            $username = trim((string) ($payload['username'] ?? ''));
+            $password = (string) ($payload['password'] ?? '');
+            $fullName = trim((string) ($payload['full_name'] ?? ''));
+            $role = trim((string) ($payload['role'] ?? ''));
+
+            if ($username === '' || $password === '' || $fullName === '' || $role === '') {
+                jsonResponse(['success' => false, 'message' => 'All fields are required'], 400);
+                exit;
+            }
+
+            if (!in_array($role, ['admin', 'doctor'], true)) {
+                jsonResponse(['success' => false, 'message' => 'Invalid role'], 400);
+                exit;
+            }
+
+            try {
+                $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+                $stmt = $db->prepare("INSERT INTO users (username, password_hash, full_name, role, is_active) VALUES (:username, :password_hash, :full_name, :role, true)");
+                $stmt->execute([
+                    ':username' => $username,
+                    ':password_hash' => $passwordHash,
+                    ':full_name' => $fullName,
+                    ':role' => $role
+                ]);
+                jsonResponse(['success' => true, 'message' => 'User created successfully']);
+            } catch (PDOException $e) {
+                if (strpos($e->getMessage(), 'unique constraint') !== false) {
+                    jsonResponse(['success' => false, 'message' => 'Username already exists'], 409);
+                } else {
+                    jsonResponse(['success' => false, 'message' => 'Failed to create user'], 500);
+                }
+            }
+            break;
+
+        case 'update-user':
+            $userId = (int) ($payload['id'] ?? 0);
+            $fullName = trim((string) ($payload['full_name'] ?? ''));
+            $role = trim((string) ($payload['role'] ?? ''));
+            $isActive = isset($payload['is_active']) ? (bool) $payload['is_active'] : null;
+            $newPassword = (string) ($payload['new_password'] ?? '');
+
+            if ($userId === 0) {
+                jsonResponse(['success' => false, 'message' => 'User ID is required'], 400);
+                exit;
+            }
+
+            if ($userId === $_SESSION['user_id']) {
+                jsonResponse(['success' => false, 'message' => 'Cannot modify your own account'], 400);
+                exit;
+            }
+
+            try {
+                $updateFields = [];
+                $params = [':id' => $userId];
+
+                if ($fullName !== '') {
+                    $updateFields[] = "full_name = :full_name";
+                    $params[':full_name'] = $fullName;
+                }
+
+                if ($role !== '' && in_array($role, ['admin', 'doctor'], true)) {
+                    $updateFields[] = "role = :role";
+                    $params[':role'] = $role;
+                }
+
+                if ($isActive !== null) {
+                    $updateFields[] = "is_active = :is_active";
+                    $params[':is_active'] = $isActive ? 'true' : 'false';
+                }
+
+                if ($newPassword !== '') {
+                    $updateFields[] = "password_hash = :password_hash";
+                    $params[':password_hash'] = password_hash($newPassword, PASSWORD_DEFAULT);
+                }
+
+                if (empty($updateFields)) {
+                    jsonResponse(['success' => false, 'message' => 'No fields to update'], 400);
+                    exit;
+                }
+
+                $sql = "UPDATE users SET " . implode(', ', $updateFields) . " WHERE id = :id";
+                $stmt = $db->prepare($sql);
+                $stmt->execute($params);
+
+                jsonResponse(['success' => true, 'message' => 'User updated successfully']);
+            } catch (PDOException $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to update user'], 500);
+            }
+            break;
+
+        case 'delete-user':
+            $userId = (int) ($payload['id'] ?? 0);
+
+            if ($userId === 0) {
+                jsonResponse(['success' => false, 'message' => 'User ID is required'], 400);
+                exit;
+            }
+
+            if ($userId === $_SESSION['user_id']) {
+                jsonResponse(['success' => false, 'message' => 'Cannot delete your own account'], 400);
+                exit;
+            }
+
+            try {
+                $stmt = $db->prepare("DELETE FROM users WHERE id = :id");
+                $stmt->execute([':id' => $userId]);
+                jsonResponse(['success' => true, 'message' => 'User deleted successfully']);
+            } catch (PDOException $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to delete user'], 500);
+            }
             break;
 
         default:

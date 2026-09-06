@@ -1,0 +1,50 @@
+# Environment variables (keep .env.example for deployment)
+.env
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Docker
+.dockerignore
+
+# Documentation
+docs/*.md
+README.md
+PROJECT_STRUCTURE.md
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+tests/
+test_*.php
+test_*.html
+test_*.sql
+
+# Backup and temporary files
+*.bak
+*.tmp
+*.backup
+
+# PostgreSQL data directories
+postgres_data/
+data/
+
+# Laragon specific
+start-queue.bat
+
+# Devin (AI assistant) specific
+.devin/

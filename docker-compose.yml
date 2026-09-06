@@ -1,0 +1,48 @@
+services:
+  web:
+    build: .
+    container_name: rhu-queue-web
+    ports:
+      - "0.0.0.0:8081:80"  # Bind to all interfaces for LAN access (port 8081 to avoid Laragon conflict)
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-rhu_queue_system}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - rhu-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: rhu-queue-postgres
+    environment:
+      - POSTGRES_DB=${DB_NAME:-rhu_queue_system}
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./backend/migration_add_followup.sql:/docker-entrypoint-initdb.d/02-migration.sql
+      - ./backend/migration_users.sql:/docker-entrypoint-initdb.d/03-migration.sql
+    networks:
+      - rhu-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+networks:
+  rhu-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

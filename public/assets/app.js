@@ -190,12 +190,8 @@ function initRealtimeSync() {
 //This function fetches the current state of the queue from the backend API and updates the local state accordingly. It also handles any errors that may occur during the fetch operation.
 async function fetchState() {
   try {
-    // Use absolute URL based on current location for LAN compatibility
-    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
-    if (path === '/' || path === '') {
-      path = '';
-    }
-    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
+    // Use root-relative path for Docker/LAN compatibility
+    const apiUrl = '/backend/api_postgres.php';
     const response = await fetch(apiUrl, { cache: 'no-store' });
     const data = await response.json();
     if (data?.success && data.state) {
@@ -210,12 +206,8 @@ async function fetchState() {
 //This function sends a POST request to the backend API with the specified action and payload. It updates the local state based on the response and handles any errors that may occur during the request.
 async function postAction(action, payload = {}) {
   try {
-    // Use absolute URL based on current location for LAN compatibility
-    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
-    if (path === '/' || path === '') {
-      path = '';
-    }
-    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
+    // Use root-relative path for Docker/LAN compatibility
+    const apiUrl = '/backend/api_postgres.php';
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -251,12 +243,8 @@ async function postAction(action, payload = {}) {
 // this function simulates an admin login by checking against hardcoded credentials.
 async function loginAdmin(username, password) {
   try {
-    // Use absolute URL based on current location for LAN compatibility
-    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
-    if (path === '/' || path === '') {
-      path = '';
-    }
-    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
+    // Use root-relative path for Docker/LAN compatibility
+    const apiUrl = '/backend/api_postgres.php';
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -284,11 +272,7 @@ async function loginAdmin(username, password) {
 
 async function logoutAdmin() {
   try {
-    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
-    if (path === '/' || path === '') {
-      path = '';
-    }
-    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
+    const apiUrl = '/backend/api_postgres.php';
     await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -304,11 +288,7 @@ async function logoutAdmin() {
 
 async function loginDoctor(username, password) {
   try {
-    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
-    if (path === '/' || path === '') {
-      path = '';
-    }
-    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
+    const apiUrl = '/backend/api_postgres.php';
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -336,11 +316,7 @@ async function loginDoctor(username, password) {
 
 async function logoutDoctor() {
   try {
-    let path = window.location.pathname.replace(/\/public\/[^/]*$/, '');
-    if (path === '/' || path === '') {
-      path = '';
-    }
-    const apiUrl = window.location.origin + path + '/backend/api_postgres.php';
+    const apiUrl = '/backend/api_postgres.php';
     await fetch(apiUrl, {
       method: 'POST',
       headers: {

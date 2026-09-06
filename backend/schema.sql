@@ -1,11 +1,6 @@
 -- RHU II Patient Queuing System Database Schema
 -- PostgreSQL Migration Script
-
--- Create database if it doesn't exist (run this manually if needed)
--- CREATE DATABASE rhu_queue_system;
-
--- Connect to the database
--- \c rhu_queue_system
+-- This file is automatically executed by Docker during initialization
 
 -- Patients table
 CREATE TABLE IF NOT EXISTS patients (
@@ -95,7 +90,3 @@ CREATE TRIGGER update_patients_updated_at BEFORE UPDATE ON patients
 
 CREATE TRIGGER update_queue_management_updated_at BEFORE UPDATE ON queue_management
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Grant permissions (adjust as needed for your setup)
--- GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO your_username;
--- GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO your_username;
