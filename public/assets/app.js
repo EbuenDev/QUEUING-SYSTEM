@@ -6,6 +6,15 @@ let state = {
 
 let updateChannel = null;
 
+// Doctor notification state
+let doctorNotificationState = {
+  previousPatientCount: 0,
+  isNotificationVisible: false,
+  notificationElement: null,
+  soundElement: null,
+  autoHideTimeout: null
+};
+
 const ADMIN_CREDENTIALS = {
   username: 'admin',
   password: 'admin123',
@@ -15,6 +24,99 @@ const DOCTOR_CREDENTIALS = {
   username: 'doctor',
   password: 'doctor123',
 };
+
+// Doctor notification functions
+function initDoctorNotification() {
+  const notification = document.getElementById('doctor-notification');
+  const closeBtn = document.getElementById('notification-close');
+  const messageElement = document.getElementById('notification-message');
+
+  if (notification) {
+    doctorNotificationState.notificationElement = notification;
+    doctorNotificationState.previousPatientCount = state.patients.length;
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', hideDoctorNotification);
+  }
+
+  // Create audio element for sound effect
+  doctorNotificationState.soundElement = new Audio('assets/sounds/sound-9.mp3');
+  doctorNotificationState.soundElement.volume = 0.5; // Set volume to 50%
+}
+
+function showDoctorNotification(patientName, queueNumber) {
+  if (!doctorNotificationState.notificationElement || doctorNotificationState.isNotificationVisible) {
+    return;
+  }
+
+  const messageElement = document.getElementById('notification-message');
+  if (messageElement) {
+    messageElement.textContent = `Patient #${queueNumber} — ${patientName} has been added to the queue.`;
+  }
+
+  doctorNotificationState.notificationElement.classList.add('visible');
+  doctorNotificationState.isNotificationVisible = true;
+
+  // Play sound effect
+  if (doctorNotificationState.soundElement) {
+    doctorNotificationState.soundElement.currentTime = 0;
+    doctorNotificationState.soundElement.play().catch(error => {
+      console.warn('Unable to play notification sound:', error);
+    });
+  }
+
+  // Clear any existing auto-hide timeout
+  if (doctorNotificationState.autoHideTimeout) {
+    clearTimeout(doctorNotificationState.autoHideTimeout);
+  }
+
+  // Auto-hide after 10 seconds
+  doctorNotificationState.autoHideTimeout = setTimeout(() => {
+    hideDoctorNotification();
+  }, 10000);
+}
+
+function hideDoctorNotification() {
+  if (!doctorNotificationState.notificationElement) {
+    return;
+  }
+
+  // Clear auto-hide timeout if exists
+  if (doctorNotificationState.autoHideTimeout) {
+    clearTimeout(doctorNotificationState.autoHideTimeout);
+    doctorNotificationState.autoHideTimeout = null;
+  }
+
+  doctorNotificationState.notificationElement.classList.remove('visible');
+  doctorNotificationState.isNotificationVisible = false;
+}
+
+function checkForNewPatients() {
+  if (!isDoctorAuthenticated() || !doctorNotificationState.notificationElement) {
+    return;
+  }
+
+  const currentPatientCount = state.patients.length;
+
+  // Check if new patients were added (count increased)
+  if (currentPatientCount > doctorNotificationState.previousPatientCount) {
+    const newPatientsCount = currentPatientCount - doctorNotificationState.previousPatientCount;
+
+    // Get the most recently added patient(s)
+    const newPatients = state.patients.slice(-newPatientsCount);
+
+    // Show notification for new patients (only if notification isn't already visible)
+    if (!doctorNotificationState.isNotificationVisible && newPatients.length > 0) {
+      // Show notification for the most recent patient
+      const latestPatient = newPatients[newPatients.length - 1];
+      showDoctorNotification(latestPatient.name, latestPatient.queueNumber);
+    }
+  }
+
+  // Update the previous count
+  doctorNotificationState.previousPatientCount = currentPatientCount;
+}
 
 function isAdminAuthenticated() {
   try {
@@ -53,6 +155,9 @@ function setDoctorAuthenticated(isAuthenticated) {
       sessionStorage.setItem('queue-doctor-auth', 'true');
     } else {
       sessionStorage.removeItem('queue-doctor-auth');
+      // Reset notification state on logout
+      doctorNotificationState.previousPatientCount = 0;
+      hideDoctorNotification();
     }
   } catch (error) {
     console.warn('Unable to persist doctor auth state', error);
@@ -152,6 +257,7 @@ function initRealtimeSync() {
       if (event.data?.type === 'queue-state-update' && event.data.state) {
         state = event.data.state;
         render();
+        checkForNewPatients();
       }
     });
   }
@@ -167,6 +273,7 @@ function initRealtimeSync() {
         if (payload?.state) {
           state = payload.state;
           render();
+          checkForNewPatients();
         }
       } catch (error) {
         console.warn('Unable to sync queue state from storage', error);
@@ -197,6 +304,7 @@ async function fetchState() {
     if (data?.success && data.state) {
       state = data.state;
       render();
+      checkForNewPatients();
     }
   } catch (error) {
     console.error('Unable to load queue state', error);
@@ -233,6 +341,7 @@ async function postAction(action, payload = {}) {
       state = data.state;
       render();
       broadcastState(data.state);
+      checkForNewPatients();
       await fetchState();
     }
   } catch (error) {
@@ -1056,6 +1165,9 @@ function render() {
   if (document.getElementById('consultation-history')) {
     renderConsultationHistory();
   }
+
+  // Check for new patients on doctor page
+  checkForNewPatients();
 }
 
 function initAdminPage() {
@@ -1289,6 +1401,9 @@ function initBhwPage() {
 }
 
 function initDoctorPage() {
+  // Initialize doctor notification system
+  initDoctorNotification();
+
   const serveNextButton = document.getElementById('doctor-serve-next-btn');
   const recallButton = document.getElementById('doctor-recall-btn');
   const skipButton = document.getElementById('doctor-skip-btn');
@@ -1477,6 +1592,8 @@ function initDoctorAuth() {
         showDoctorLoginError('Invalid username or password.');
       } else {
         loginForm.reset();
+        // Reset notification state on successful login
+        doctorNotificationState.previousPatientCount = state.patients.length;
       }
     });
   }
@@ -1547,6 +1664,7 @@ function initHamburgerMenu() {
         showDoctorLoginError('');
         hamburgerMenu.hidden = true;
         hamburgerBtn.classList.remove('active');
+        hideDoctorNotification();
         setTimeout(() => {
           const usernameInput = document.getElementById('doctor-username');
           if (usernameInput) {

@@ -568,6 +568,75 @@ body {
   pointer-events: none;
 }
 
+/* Doctor Notification Styles */
+.doctor-notification {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  color: white;
+  padding: 16px 20px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(24, 50, 75, 0.2);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 300px;
+  transform: translateX(120%);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
+}
+
+.doctor-notification.visible {
+  transform: translateX(0);
+}
+
+.doctor-notification-content {
+  flex: 1;
+}
+
+.doctor-notification-title {
+  font-weight: 700;
+  font-size: 1rem;
+  margin: 0 0 4px 0;
+}
+
+.doctor-notification-message {
+  font-size: 0.9rem;
+  opacity: 0.9;
+  margin: 0;
+}
+
+.doctor-notification-close {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.doctor-notification-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+@media (max-width: 760px) {
+  .doctor-notification {
+    top: auto;
+    bottom: 80px;
+    right: 16px;
+    left: 16px;
+    min-width: auto;
+  }
+}
+
 @media (max-width: 760px) {
   .board {
     grid-template-columns: 1fr;
