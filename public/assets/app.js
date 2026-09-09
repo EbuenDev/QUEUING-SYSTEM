@@ -5,6 +5,8 @@ let state = {
 };
 
 let updateChannel = null;
+let lastNotificationId = 0;
+let notificationAudio = null;
 
 const ADMIN_CREDENTIALS = {
   username: 'admin',
@@ -183,6 +185,7 @@ function initRealtimeSync() {
     // Only fetch if page is visible to reduce unnecessary requests
     if (!document.hidden) {
       fetchState();
+      pollNotifications();
     }
   }, 2000);
 }
@@ -327,6 +330,138 @@ async function logoutDoctor() {
     });
   } catch (error) {
     console.error('Unable to log out', error);
+  }
+}
+
+async function pollNotifications() {
+  if (!isDoctorAuthenticated()) {
+    console.log('Polling skipped: Doctor not authenticated');
+    return;
+  }
+
+  try {
+    const apiUrl = '/backend/api_postgres.php';
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        action: 'poll-notifications',
+        lastNotificationId: lastNotificationId 
+      }),
+      cache: 'no-store',
+    });
+
+    const data = await response.json();
+    console.log('Poll response:', data);
+    
+    if (data?.success && data.notifications && data.notifications.length > 0) {
+      console.log('Found', data.notifications.length, 'new notifications');
+      // Process new notifications
+      data.notifications.forEach(notification => {
+        showNotificationPopup(notification);
+        playNotificationSound();
+        
+        // Update last notification ID
+        if (notification.id > lastNotificationId) {
+          lastNotificationId = notification.id;
+        }
+      });
+
+      // Mark notifications as read
+      const notificationIds = data.notifications.map(n => n.id);
+      await markNotificationsAsRead(notificationIds);
+    } else {
+      console.log('No new notifications');
+    }
+  } catch (error) {
+    console.error('Unable to poll notifications', error);
+  }
+}
+
+async function markNotificationsAsRead(notificationIds) {
+  try {
+    const apiUrl = '/backend/api_postgres.php';
+    await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        action: 'mark-notifications-read',
+        notificationIds: notificationIds 
+      }),
+      cache: 'no-store',
+    });
+  } catch (error) {
+    console.error('Unable to mark notifications as read', error);
+  }
+}
+
+function showNotificationPopup(notification) {
+  // Create notification popup if it doesn't exist
+  let popup = document.getElementById('notification-popup');
+  if (!popup) {
+    popup = document.createElement('div');
+    popup.id = 'notification-popup';
+    popup.className = 'card edit-modal notification-popup';
+    popup.innerHTML = `
+      <h3>🔔 New Notification</h3>
+      <div id="notification-content"></div>
+      <div class="toolbar">
+        <button type="button" id="close-notification-btn" class="btn btn-secondary">Close</button>
+      </div>
+    `;
+    document.body.appendChild(popup);
+
+    // Add close button handler
+    document.getElementById('close-notification-btn').addEventListener('click', () => {
+      popup.hidden = true;
+    });
+  }
+
+  // Update content
+  const content = document.getElementById('notification-content');
+  const queueNumber = notification.queue_number ? `#${notification.queue_number}` : 'N/A';
+  const patientName = notification.patient_name || 'Unknown';
+  const message = notification.message || 'No message';
+  const notificationType = notification.notification_type || 'notification';
+
+  content.innerHTML = `
+    <p><strong>Queue Number:</strong> ${queueNumber}</p>
+    <p><strong>Patient:</strong> ${escapeHtml(patientName)}</p>
+    <p><strong>Type:</strong> ${escapeHtml(notificationType)}</p>
+    <p><strong>Message:</strong> ${escapeHtml(message)}</p>
+  `;
+
+  // Show popup
+  popup.hidden = false;
+}
+
+function playNotificationSound() {
+  try {
+    console.log('Attempting to play notification sound...');
+    
+    if (!notificationAudio) {
+      notificationAudio = new Audio('/audio/all/sound-9.mp3');
+      console.log('Created new Audio object for /audio/all/sound-9.mp3');
+    }
+    
+    // Reset and play
+    notificationAudio.currentTime = 0;
+    const playPromise = notificationAudio.play();
+    
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        console.log('✓ Sound played successfully');
+      }).catch(error => {
+        console.warn('✗ Unable to play notification sound:', error);
+        console.log('Browser may require user interaction first. Try clicking anywhere on the page.');
+      });
+    }
+  } catch (error) {
+    console.error('Error playing notification sound:', error);
   }
 }
 

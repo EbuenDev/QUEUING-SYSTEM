@@ -246,6 +246,53 @@ function updateQueueNumber(PDO $db, int $nextQueueNumber): void {
     }
 }
 
+function createNotification(PDO $db, array $notification): void {
+    try {
+        error_log('Creating notification: ' . json_encode($notification));
+        $stmt = $db->prepare("INSERT INTO notifications (queue_number, patient_name, message, notification_type, is_read) 
+                             VALUES (:queueNumber, :patientName, :message, :notificationType, :isRead)");
+        
+        $stmt->execute([
+            ':queueNumber' => $notification['queueNumber'] ?? null,
+            ':patientName' => $notification['patientName'] ?? '',
+            ':message' => $notification['message'] ?? '',
+            ':notificationType' => $notification['notificationType'] ?? 'patient_call',
+            ':isRead' => false,  // Boolean, not string
+        ]);
+        error_log('Notification created successfully');
+    } catch (PDOException $e) {
+        error_log('Error creating notification: ' . $e->getMessage());
+        // Don't throw - notifications should not break the main flow
+    }
+}
+
+function getUnreadNotifications(PDO $db, int $lastNotificationId = 0): array {
+    try {
+        $stmt = $db->prepare("SELECT id, queue_number, patient_name, message, notification_type, created_at 
+                             FROM notifications 
+                             WHERE id > :lastNotificationId AND is_read = false 
+                             ORDER BY id ASC");
+        $stmt->execute([':lastNotificationId' => $lastNotificationId]);
+        return $stmt->fetchAll();
+    } catch (PDOException $e) {
+        error_log('Error fetching notifications: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function markNotificationsAsRead(PDO $db, array $notificationIds): void {
+    try {
+        if (empty($notificationIds)) {
+            return;
+        }
+        $placeholders = implode(',', array_fill(0, count($notificationIds), '?'));
+        $stmt = $db->prepare("UPDATE notifications SET is_read = true WHERE id IN ($placeholders)");
+        $stmt->execute($notificationIds);
+    } catch (PDOException $e) {
+        error_log('Error marking notifications as read: ' . $e->getMessage());
+    }
+}
+
 function jsonResponse(array $payload, int $status = 200): void {
     http_response_code($status);
     echo json_encode($payload);
@@ -281,7 +328,7 @@ if (!is_array($payload)) {
 
 $action = $payload['action'] ?? '';
 $requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
-$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor'], true);
+$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read'], true);
 $requiresSuperAdminAuth = in_array($action, ['create-user', 'list-users', 'update-user', 'delete-user'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
@@ -369,12 +416,15 @@ try {
             break;
 
         case 'add':
+            error_log('ADD action called');
             $name = trim((string) ($payload['name'] ?? ''));
             $philHealthId = trim((string) ($payload['philHealthId'] ?? ''));
             $type = strtolower(trim((string) ($payload['patientStatus'] ?? $payload['type'] ?? 'regular')));
             $philHealthStatus = strtolower(trim((string) ($payload['philHealthStatus'] ?? 'no-philhealth')));
             $allowedTypes = ['regular', 'pwd', 'senior', 'emergency'];
             $allowedPhilHealthStatus = ['no-philhealth', 'registered', 'not-registered', 'other-facility'];
+
+            error_log('Adding patient: ' . $name);
 
             if ($name === '') {
                 jsonResponse(['success' => false, 'message' => 'Patient name is required'], 400);
@@ -400,10 +450,22 @@ try {
                 'philHealthStatus' => $philHealthStatus,
             ];
 
+            error_log('Saving patient to database');
             savePatientToDatabase($db, $newPatient);
             updateQueueNumber($db, $state['nextQueueNumber'] + 1);
             
+            error_log('Creating notification for patient: ' . $newPatient['name']);
+            // Create notification for doctor when patient is added
+            createNotification($db, [
+                'queueNumber' => $newPatient['queueNumber'],
+                'patientName' => $newPatient['name'],
+                'message' => 'New patient arrived and ready for consultation.',
+                'notificationType' => 'patient_arrival'
+            ]);
+            
+            error_log('Reloading state');
             $state = loadStateFromDatabase($db);
+            error_log('Sending response');
             jsonResponse(['success' => true, 'state' => $state]);
             break;
 
@@ -904,6 +966,22 @@ try {
             } catch (PDOException $e) {
                 jsonResponse(['success' => false, 'message' => 'Failed to delete user'], 500);
             }
+            break;
+
+        case 'poll-notifications':
+            $lastNotificationId = (int) ($payload['lastNotificationId'] ?? 0);
+            $notifications = getUnreadNotifications($db, $lastNotificationId);
+            jsonResponse(['success' => true, 'notifications' => $notifications]);
+            break;
+
+        case 'mark-notifications-read':
+            $notificationIds = $payload['notificationIds'] ?? [];
+            if (!is_array($notificationIds)) {
+                jsonResponse(['success' => false, 'message' => 'Invalid notification IDs'], 400);
+                exit;
+            }
+            markNotificationsAsRead($db, $notificationIds);
+            jsonResponse(['success' => true, 'message' => 'Notifications marked as read']);
             break;
 
         default:

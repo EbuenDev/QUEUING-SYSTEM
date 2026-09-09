@@ -30,6 +30,7 @@ services:
       - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
       - ./backend/migration_add_followup.sql:/docker-entrypoint-initdb.d/02-migration.sql
       - ./backend/migration_users.sql:/docker-entrypoint-initdb.d/03-migration.sql
+      - ./backend/migration_notifications.sql:/docker-entrypoint-initdb.d/04-migration.sql
     networks:
       - rhu-network
     healthcheck:
