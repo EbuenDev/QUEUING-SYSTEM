@@ -37,17 +37,23 @@
             </form>
           </div>
         </div>
-        <button id="hamburger-menu-btn" class="hamburger-btn" type="button" aria-label="Menu">
-          <span class="hamburger-line"></span>
-          <span class="hamburger-line"></span>
-          <span class="hamburger-line"></span>
-        </button>
-        <div id="hamburger-menu" class="hamburger-menu" hidden>
-          <ul class="hamburger-menu-list">
-            <li><a href="index.html" class="hamburger-menu-link">Patient Display</a></li>
-            <li><a href="bhw.html" class="hamburger-menu-link">BHW Panel</a></li>
-            <li><button id="menu-logout" class="hamburger-menu-link logout-link">Logout</button></li>
-          </ul>
+        <div class="hamburger-container">
+          <button id="hamburger-menu-btn" class="hamburger-btn" type="button" aria-label="Menu">
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+            <span class="hamburger-line"></span>
+          </button>
+          <div id="hamburger-menu" class="hamburger-menu-popup" hidden>
+            <div class="hamburger-menu-header">
+              <h3>Menu</h3>
+              <button id="close-hamburger-popup" class="close-popup-btn" type="button">&times;</button>
+            </div>
+            <ul class="hamburger-menu-list">
+              <li><a href="index.html" class="hamburger-menu-link">Patient Display</a></li>
+              <li><a href="bhw.html" class="hamburger-menu-link">BHW Panel</a></li>
+              <li><button id="menu-logout" class="hamburger-menu-link logout-link">Logout</button></li>
+            </ul>
+          </div>
         </div>
       </div>
     </header>
@@ -195,6 +201,6 @@
     </main>
 
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
-    <script src="assets/app.js?v=1.9"></script>
+    <script src="assets/app.js?v=2.0"></script>
   </body>
 </html>

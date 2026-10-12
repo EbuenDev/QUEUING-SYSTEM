@@ -333,6 +333,8 @@ async function pollMessages() {
     const data = await response.json();
     if (data?.success) {
       const oldUnreadCount = state.unreadCount;
+      const oldMessagesLength = state.messages.length;
+
       state.messages = data.messages || [];
       state.unreadCount = data.unreadCount || 0;
 
@@ -341,10 +343,13 @@ async function pollMessages() {
         updateMessageBadge();
       }
 
-      // If popup is open, re-render messages
+      // If popup is open or new messages arrived, re-render messages
       const messagePopup = document.getElementById('message-popup');
       if (messagePopup && !messagePopup.hidden) {
         renderMessages();
+      } else if (state.messages.length > oldMessagesLength) {
+        // New message arrived but popup is closed - update badge
+        updateMessageBadge();
       }
     }
   } catch (error) {
@@ -1813,6 +1818,7 @@ function initDoctorAuth() {
 function initHamburgerMenu() {
   const hamburgerBtn = document.getElementById('hamburger-menu-btn');
   const hamburgerMenu = document.getElementById('hamburger-menu');
+  const closeHamburgerPopupBtn = document.getElementById('close-hamburger-popup');
   const consultationHistoryLink = document.getElementById('menu-consultation-history');
   const menuLogoutBtn = document.getElementById('menu-logout');
   const consultationHistorySection = document.getElementById('consultation-history-section');
@@ -1839,10 +1845,20 @@ function initHamburgerMenu() {
 
   if (hamburgerBtn && hamburgerMenu) {
     // Toggle menu visibility
-    hamburgerBtn.addEventListener('click', () => {
+    hamburgerBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
       hamburgerMenu.hidden = !hamburgerMenu.hidden;
       hamburgerBtn.classList.toggle('active', !hamburgerMenu.hidden);
     });
+
+    // Close menu when clicking close button
+    if (closeHamburgerPopupBtn) {
+      closeHamburgerPopupBtn.addEventListener('click', (event) => {
+        event.stopPropagation();
+        hamburgerMenu.hidden = true;
+        hamburgerBtn.classList.remove('active');
+      });
+    }
 
     // Close menu when clicking outside
     document.addEventListener('click', (event) => {
@@ -1995,7 +2011,7 @@ function renderMessages() {
     `;
   }).join('');
 
-  // Scroll to bottom
+  // Scroll to bottom to show latest message
   messageList.scrollTop = messageList.scrollHeight;
 }
 
