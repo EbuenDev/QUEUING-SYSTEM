@@ -171,6 +171,8 @@ function setAdminView(isAuthenticated) {
   const loginCard = document.getElementById('login-card');
   const adminPanel = document.getElementById('admin-panel');
   const logoutButton = document.getElementById('logout-btn');
+  const hamburgerBtn = document.getElementById('hamburger-menu-btn');
+  const hamburgerMenu = document.getElementById('hamburger-menu');
 
   if (loginCard) {
     loginCard.hidden = isAuthenticated;
@@ -182,6 +184,14 @@ function setAdminView(isAuthenticated) {
 
   if (logoutButton) {
     logoutButton.hidden = !isAuthenticated;
+  }
+
+  if (hamburgerBtn) {
+    hamburgerBtn.hidden = !isAuthenticated;
+  }
+
+  if (hamburgerMenu) {
+    hamburgerMenu.hidden = true;
   }
 }
 
@@ -1759,12 +1769,24 @@ function initHamburgerMenu() {
   const menuLogoutBtn = document.getElementById('menu-logout');
   const consultationHistorySection = document.getElementById('consultation-history-section');
 
+  // Check if this is admin or doctor page
+  const isAdminPage = document.getElementById('patient-list') !== null;
+  const isDoctorPage = document.getElementById('doctor-patient-list') !== null;
+
   // Initially hide hamburger menu if not authenticated
-  if (hamburgerBtn && !isDoctorAuthenticated()) {
-    hamburgerBtn.hidden = true;
+  if (hamburgerBtn) {
+    if (isAdminPage && !isAdminAuthenticated()) {
+      hamburgerBtn.hidden = true;
+    } else if (isDoctorPage && !isDoctorAuthenticated()) {
+      hamburgerBtn.hidden = true;
+    }
   }
-  if (hamburgerMenu && !isDoctorAuthenticated()) {
-    hamburgerMenu.hidden = true;
+  if (hamburgerMenu) {
+    if (isAdminPage && !isAdminAuthenticated()) {
+      hamburgerMenu.hidden = true;
+    } else if (isDoctorPage && !isDoctorAuthenticated()) {
+      hamburgerMenu.hidden = true;
+    }
   }
 
   if (hamburgerBtn && hamburgerMenu) {
@@ -1782,7 +1804,7 @@ function initHamburgerMenu() {
       }
     });
 
-    // Consultation history link handler
+    // Consultation history link handler (doctor only)
     if (consultationHistoryLink && consultationHistorySection) {
       consultationHistoryLink.addEventListener('click', (event) => {
         event.preventDefault();
@@ -1795,19 +1817,32 @@ function initHamburgerMenu() {
     // Menu logout button handler
     if (menuLogoutBtn) {
       menuLogoutBtn.addEventListener('click', async () => {
-        await logoutDoctor();
-        setDoctorAuthenticated(false);
-        setDoctorView(false);
-        showDoctorLoginError('');
+        if (isDoctorPage) {
+          await logoutDoctor();
+          setDoctorAuthenticated(false);
+          setDoctorView(false);
+          showDoctorLoginError('');
+          hideDoctorNotification();
+          setTimeout(() => {
+            const usernameInput = document.getElementById('doctor-username');
+            if (usernameInput) {
+              usernameInput.focus();
+            }
+          }, 100);
+        } else if (isAdminPage) {
+          await logoutAdmin();
+          setAdminAuthenticated(false);
+          setAdminView(false);
+          showAdminLoginError('');
+          setTimeout(() => {
+            const usernameInput = document.getElementById('admin-username');
+            if (usernameInput) {
+              usernameInput.focus();
+            }
+          }, 100);
+        }
         hamburgerMenu.hidden = true;
         hamburgerBtn.classList.remove('active');
-        hideDoctorNotification();
-        setTimeout(() => {
-          const usernameInput = document.getElementById('doctor-username');
-          if (usernameInput) {
-            usernameInput.focus();
-          }
-        }, 100);
       });
     }
   }
