@@ -20,6 +20,23 @@
         </div>
       </div>
       <div class="topbar-actions">
+        <div class="message-container">
+          <button id="message-btn" class="message-btn" type="button" aria-label="Messages">
+            <span class="message-icon">💬</span>
+            <span id="message-badge" class="message-badge" hidden>0</span>
+          </button>
+          <div id="message-popup" class="message-popup" hidden>
+            <div class="message-popup-header">
+              <h3>Messages</h3>
+              <button id="close-message-popup" class="close-popup-btn" type="button">&times;</button>
+            </div>
+            <div id="message-list" class="message-list"></div>
+            <form id="message-form" class="message-form" method="post" action="">
+              <input id="message-input" type="text" placeholder="Type a message..." required />
+              <button type="submit" class="btn btn-primary">Send</button>
+            </form>
+          </div>
+        </div>
         <button id="hamburger-menu-btn" class="hamburger-btn" type="button" aria-label="Menu">
           <span class="hamburger-line"></span>
           <span class="hamburger-line"></span>
@@ -178,6 +195,6 @@
     </main>
 
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
-    <script src="assets/app.js?v=1.7"></script>
+    <script src="assets/app.js?v=1.9"></script>
   </body>
 </html>

@@ -246,6 +246,69 @@ function updateQueueNumber(PDO $db, int $nextQueueNumber): void {
     }
 }
 
+function loadMessagesFromDatabase(PDO $db, string $userRole): array {
+    try {
+        $stmt = $db->prepare("SELECT id, sender_role, receiver_role, message, is_read, created_at
+                             FROM messages
+                             WHERE (sender_role = :userRole OR receiver_role = :userRole)
+                             ORDER BY created_at ASC");
+        $stmt->execute([':userRole' => $userRole]);
+        $messages = $stmt->fetchAll();
+
+        return array_map(function($message) {
+            return [
+                'id' => $message['id'],
+                'senderRole' => $message['sender_role'],
+                'receiverRole' => $message['receiver_role'],
+                'message' => $message['message'],
+                'isRead' => (bool)$message['is_read'],
+                'createdAt' => $message['created_at']
+            ];
+        }, $messages);
+    } catch (PDOException $e) {
+        error_log('Error loading messages from database: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function saveMessageToDatabase(PDO $db, string $senderRole, string $receiverRole, string $message): void {
+    try {
+        $stmt = $db->prepare("INSERT INTO messages (sender_role, receiver_role, message, is_read)
+                             VALUES (:senderRole, :receiverRole, :message, false)");
+        $stmt->execute([
+            ':senderRole' => $senderRole,
+            ':receiverRole' => $receiverRole,
+            ':message' => $message
+        ]);
+    } catch (PDOException $e) {
+        error_log('Error saving message to database: ' . $e->getMessage());
+        throw $e;
+    }
+}
+
+function markMessagesAsRead(PDO $db, string $userRole): void {
+    try {
+        $stmt = $db->prepare("UPDATE messages SET is_read = true
+                             WHERE receiver_role = :userRole AND is_read = false");
+        $stmt->execute([':userRole' => $userRole]);
+    } catch (PDOException $e) {
+        error_log('Error marking messages as read: ' . $e->getMessage());
+    }
+}
+
+function getUnreadMessageCount(PDO $db, string $userRole): int {
+    try {
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM messages
+                             WHERE receiver_role = :userRole AND is_read = false");
+        $stmt->execute([':userRole' => $userRole]);
+        $result = $stmt->fetch();
+        return (int)($result['count'] ?? 0);
+    } catch (PDOException $e) {
+        error_log('Error getting unread message count: ' . $e->getMessage());
+        return 0;
+    }
+}
+
 function createNotification(PDO $db, array $notification): void {
     try {
         error_log('Creating notification: ' . json_encode($notification));
@@ -311,7 +374,18 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $state = loadStateFromDatabase($db);
 
 if ($method === 'GET') {
-    jsonResponse(['success' => true, 'state' => $state]);
+    // Determine user role for messages
+    $userRole = 'guest';
+    if (isAdminAuthenticated()) {
+        $userRole = 'admin';
+    } elseif (isDoctorAuthenticated()) {
+        $userRole = 'doctor';
+    }
+
+    $messages = loadMessagesFromDatabase($db, $userRole);
+    $unreadCount = getUnreadMessageCount($db, $userRole);
+
+    jsonResponse(['success' => true, 'state' => $state, 'messages' => $messages, 'unreadCount' => $unreadCount]);
     exit;
 }
 
@@ -328,7 +402,7 @@ if (!is_array($payload)) {
 
 $action = $payload['action'] ?? '';
 $requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
-$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read'], true);
+$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read', 'send-message', 'mark-messages-read'], true);
 $requiresSuperAdminAuth = in_array($action, ['create-user', 'list-users', 'update-user', 'delete-user'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
@@ -983,6 +1057,61 @@ try {
             }
             markNotificationsAsRead($db, $notificationIds);
             jsonResponse(['success' => true, 'message' => 'Notifications marked as read']);
+            break;
+
+        case 'send-message':
+            $message = trim((string) ($payload['message'] ?? ''));
+            $receiverRole = trim((string) ($payload['receiverRole'] ?? ''));
+
+            if ($message === '') {
+                jsonResponse(['success' => false, 'message' => 'Message is required'], 400);
+                exit;
+            }
+
+            if (!in_array($receiverRole, ['admin', 'doctor'], true)) {
+                jsonResponse(['success' => false, 'message' => 'Invalid receiver role'], 400);
+                exit;
+            }
+
+            // Determine sender role
+            $senderRole = '';
+            if (isAdminAuthenticated()) {
+                $senderRole = 'admin';
+            } elseif (isDoctorAuthenticated()) {
+                $senderRole = 'doctor';
+            } else {
+                jsonResponse(['success' => false, 'message' => 'Authentication required'], 401);
+                exit;
+            }
+
+            // Cannot send to self
+            if ($senderRole === $receiverRole) {
+                jsonResponse(['success' => false, 'message' => 'Cannot send message to yourself'], 400);
+                exit;
+            }
+
+            try {
+                saveMessageToDatabase($db, $senderRole, $receiverRole, $message);
+                jsonResponse(['success' => true, 'message' => 'Message sent successfully']);
+            } catch (Exception $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to send message'], 500);
+            }
+            break;
+
+        case 'mark-messages-read':
+            // Determine user role
+            $userRole = '';
+            if (isAdminAuthenticated()) {
+                $userRole = 'admin';
+            } elseif (isDoctorAuthenticated()) {
+                $userRole = 'doctor';
+            } else {
+                jsonResponse(['success' => false, 'message' => 'Authentication required'], 401);
+                exit;
+            }
+
+            markMessagesAsRead($db, $userRole);
+            jsonResponse(['success' => true, 'message' => 'Messages marked as read']);
             break;
 
         default:

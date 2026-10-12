@@ -2,6 +2,8 @@ let state = {
   patients: [],
   nextQueueNumber: 1,
   consultationHistory: [],
+  messages: [],
+  unreadCount: 0,
 };
 
 let updateChannel = null;
@@ -173,6 +175,7 @@ function setAdminView(isAuthenticated) {
   const logoutButton = document.getElementById('logout-btn');
   const hamburgerBtn = document.getElementById('hamburger-menu-btn');
   const hamburgerMenu = document.getElementById('hamburger-menu');
+  const messageBtn = document.getElementById('message-btn');
 
   if (loginCard) {
     loginCard.hidden = isAuthenticated;
@@ -193,6 +196,10 @@ function setAdminView(isAuthenticated) {
   if (hamburgerMenu) {
     hamburgerMenu.hidden = true;
   }
+
+  if (messageBtn) {
+    messageBtn.hidden = !isAuthenticated;
+  }
 }
 
 function setDoctorView(isAuthenticated) {
@@ -202,6 +209,7 @@ function setDoctorView(isAuthenticated) {
   const mainBoard = document.getElementById('doctor-main-board');
   const hamburgerBtn = document.getElementById('hamburger-menu-btn');
   const hamburgerMenu = document.getElementById('hamburger-menu');
+  const messageBtn = document.getElementById('message-btn');
 
   if (loginCard) {
     loginCard.hidden = isAuthenticated;
@@ -221,6 +229,10 @@ function setDoctorView(isAuthenticated) {
 
   if (hamburgerMenu) {
     hamburgerMenu.hidden = true;
+  }
+
+  if (messageBtn) {
+    messageBtn.hidden = !isAuthenticated;
   }
 
   if (mainBoard) {
@@ -305,6 +317,39 @@ function initRealtimeSync() {
       pollNotifications();
     }
   }, 2000);
+
+  // Set up faster polling for messages (real-time)
+  setInterval(() => {
+    if (!document.hidden && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+      pollMessages();
+    }
+  }, 1000);
+}
+
+async function pollMessages() {
+  try {
+    const apiUrl = '/backend/api_postgres.php';
+    const response = await fetch(apiUrl, { cache: 'no-store' });
+    const data = await response.json();
+    if (data?.success) {
+      const oldUnreadCount = state.unreadCount;
+      state.messages = data.messages || [];
+      state.unreadCount = data.unreadCount || 0;
+
+      // Update badge if count changed
+      if (oldUnreadCount !== state.unreadCount) {
+        updateMessageBadge();
+      }
+
+      // If popup is open, re-render messages
+      const messagePopup = document.getElementById('message-popup');
+      if (messagePopup && !messagePopup.hidden) {
+        renderMessages();
+      }
+    }
+  } catch (error) {
+    console.error('Unable to poll messages', error);
+  }
 }
 
 //This function fetches the current state of the queue from the backend API and updates the local state accordingly. It also handles any errors that may occur during the fetch operation.
@@ -316,8 +361,11 @@ async function fetchState() {
     const data = await response.json();
     if (data?.success && data.state) {
       state = data.state;
+      state.messages = data.messages || [];
+      state.unreadCount = data.unreadCount || 0;
       render();
       checkForNewPatients();
+      updateMessageBadge();
     }
   } catch (error) {
     console.error('Unable to load queue state', error);
@@ -1877,4 +1925,159 @@ document.addEventListener('DOMContentLoaded', () => {
     initHamburgerMenu();
   }
 
+  if (document.getElementById('message-btn')) {
+    initMessaging();
+  }
+
 });
+
+// Messaging functions
+function updateMessageBadge() {
+  const messageBadge = document.getElementById('message-badge');
+  if (messageBadge) {
+    if (state.unreadCount > 0) {
+      messageBadge.textContent = state.unreadCount > 9 ? '9+' : state.unreadCount;
+      messageBadge.hidden = false;
+    } else {
+      messageBadge.hidden = true;
+    }
+  }
+}
+
+function toggleMessagePopup() {
+  const messagePopup = document.getElementById('message-popup');
+  if (messagePopup) {
+    const isHidden = messagePopup.hidden;
+    messagePopup.hidden = !isHidden;
+
+    if (!isHidden) {
+      // Opening the popup
+      renderMessages();
+      // Mark messages as read after a short delay
+      setTimeout(() => {
+        postAction('mark-messages-read');
+      }, 500);
+    }
+  }
+}
+
+function closeMessagePopup() {
+  const messagePopup = document.getElementById('message-popup');
+  if (messagePopup) {
+    messagePopup.hidden = true;
+  }
+}
+
+function renderMessages() {
+  const messageList = document.getElementById('message-list');
+  if (!messageList) {
+    return;
+  }
+
+  if (!state.messages || state.messages.length === 0) {
+    messageList.innerHTML = '<p class="muted" style="text-align: center; padding: 20px;">No messages yet.</p>';
+    return;
+  }
+
+  const userRole = isAdminAuthenticated() ? 'admin' : 'doctor';
+
+  messageList.innerHTML = state.messages.map((msg) => {
+    const isSent = msg.senderRole === userRole;
+    const senderName = msg.senderRole === 'admin' ? 'Admin' : 'Doctor';
+    const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    return `
+      <div class="message-item ${isSent ? 'sent' : 'received'}">
+        <div class="message-sender">${senderName}</div>
+        <div class="message-text">${escapeHtml(msg.message)}</div>
+        <div class="message-time">${time}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Scroll to bottom
+  messageList.scrollTop = messageList.scrollHeight;
+}
+
+async function sendMessage(message) {
+  const userRole = isAdminAuthenticated() ? 'admin' : 'doctor';
+  const receiverRole = userRole === 'admin' ? 'doctor' : 'admin';
+
+  try {
+    const apiUrl = '/backend/api_postgres.php';
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'send-message',
+        message,
+        receiverRole
+      }),
+      cache: 'no-store',
+    });
+
+    const data = await response.json();
+
+    if (data?.success) {
+      // Refresh state to get new messages
+      await pollMessages();
+    } else {
+      console.error('Failed to send message:', data?.message);
+    }
+  } catch (error) {
+    console.error('Error sending message:', error);
+  }
+}
+
+function initMessaging() {
+  const messageBtn = document.getElementById('message-btn');
+  const closeMessagePopupBtn = document.getElementById('close-message-popup');
+  const messageForm = document.getElementById('message-form');
+  const messageInput = document.getElementById('message-input');
+  const messagePopup = document.getElementById('message-popup');
+
+  if (messageBtn) {
+    messageBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleMessagePopup();
+    });
+  }
+
+  if (closeMessagePopupBtn) {
+    closeMessagePopupBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      closeMessagePopup();
+    });
+  }
+
+  if (messageForm && messageInput) {
+    messageForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const message = messageInput.value.trim();
+      if (message) {
+        await sendMessage(message);
+        messageInput.value = '';
+        renderMessages();
+        // Keep focus on input for quick messaging
+        messageInput.focus();
+      }
+    });
+  }
+
+  // Close popup when clicking outside
+  if (messagePopup) {
+    document.addEventListener('click', (event) => {
+      if (!messagePopup.contains(event.target) && !messageBtn.contains(event.target)) {
+        closeMessagePopup();
+      }
+    });
+  }
+
+  // Initially hide message button if not authenticated
+  if (messageBtn && !isAdminAuthenticated() && !isDoctorAuthenticated()) {
+    messageBtn.hidden = true;
+  }
+}
