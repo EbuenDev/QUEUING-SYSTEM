@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio Test</title>
+</head>
+<body>
+    <h1>Audio File Test</h1>
+    <p>Click the button to test if the audio file plays:</p>
+    <button onclick="testAudio()">Test Audio</button>
+    <p id="result"></p>
+    
+    <script>
+    function testAudio() {
+        const audio = new Audio('/audio/all/sound-9.mp3');
+        audio.play()
+            .then(() => {
+                document.getElementById('result').textContent = '✓ Audio played successfully!';
+                document.getElementById('result').style.color = 'green';
+            })
+            .catch(error => {
+                document.getElementById('result').textContent = '✗ Audio failed to play: ' + error.message;
+                document.getElementById('result').style.color = 'red';
+            });
+    }
+    </script>
+</body>
+</html>

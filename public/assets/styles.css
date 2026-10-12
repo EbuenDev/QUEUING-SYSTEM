@@ -313,6 +313,35 @@ body {
   font-size: 1.2rem;
 }
 
+.notification-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  max-width: 500px;
+  width: 90%;
+  border: 2px solid #3b82f6;
+  background: linear-gradient(180deg, #ffffff, #f0f7ff);
+  box-shadow: 0 20px 40px rgba(24, 50, 75, 0.2);
+}
+
+.notification-popup h3 {
+  color: #3b82f6;
+  font-size: 1.4rem;
+  margin-bottom: 16px;
+}
+
+.notification-popup p {
+  margin: 8px 0;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.notification-popup strong {
+  color: #18324b;
+}
+
 #edit-history-form {
   display: grid;
   gap: 12px;
@@ -571,7 +600,7 @@ body {
 /* Doctor Notification Styles */
 .doctor-notification {
   position: fixed;
-  top: 100px;
+  bottom: 80px;
   right: 20px;
   background: linear-gradient(135deg, #1d4ed8, #2563eb);
   color: white;
@@ -629,15 +658,12 @@ body {
 
 @media (max-width: 760px) {
   .doctor-notification {
-    top: auto;
-    bottom: 80px;
+    bottom: 100px;
     right: 16px;
     left: 16px;
     min-width: auto;
   }
-}
 
-@media (max-width: 760px) {
   .board {
     grid-template-columns: 1fr;
     padding: 16px;
