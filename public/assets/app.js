@@ -1034,6 +1034,7 @@ function renderDoctorQueue() {
   if (currentPatientCard) {
     if (servingPatient) {
       currentPatientCard.innerHTML = `
+        <div id="doctor-status-indicator" class="doctor-status-indicator serving"></div>
         <div class="doctor-current-patient-details">
           <strong>#${servingPatient.queueNumber} — ${escapeHtml(servingPatient.name)}</strong>
           <div class="badge-group">
@@ -1052,6 +1053,7 @@ function renderDoctorQueue() {
       `;
     } else {
       currentPatientCard.innerHTML = `
+        <div id="doctor-status-indicator" class="doctor-status-indicator"></div>
         <div class="doctor-current-patient-details">
           <strong>No patient is being served yet.</strong>
           <div class="badge-group">

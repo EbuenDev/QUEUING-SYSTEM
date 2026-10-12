@@ -228,6 +228,20 @@ body {
   padding: 18px;
 }
 
+.doctor-status-indicator {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  background: #d1d5db;
+  transition: background 0.3s ease;
+  justify-self: start;
+}
+
+.doctor-status-indicator.serving {
+  background: #16a34a;
+  box-shadow: 0 0 12px rgba(22, 163, 74, 0.4);
+}
+
 .doctor-current-patient-details {
   display: flex;
   flex-wrap: wrap;
