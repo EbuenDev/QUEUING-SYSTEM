@@ -4,6 +4,8 @@ services:
     container_name: rhu-queue-web
     ports:
       - "0.0.0.0:8081:80"  # Bind to all interfaces for LAN access (port 8081 to avoid Laragon conflict)
+    volumes:
+      - ./:/var/www/html # Add this line to mount the current directory to /var/www/html in the container
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432

@@ -289,8 +289,9 @@ if ($requiresAdminAuth && !isAdminAuthenticated()) {
     exit;
 }
 
-if ($requiresDoctorAuth && !isDoctorAuthenticated()) {
-    jsonResponse(['success' => false, 'message' => 'Doctor authentication required'], 401);
+// Allow both admin and doctor authentication for serve-related actions
+if ($requiresDoctorAuth && !isAdminAuthenticated() && !isDoctorAuthenticated()) {
+    jsonResponse(['success' => false, 'message' => 'Admin or Doctor authentication required'], 401);
     exit;
 }
 
