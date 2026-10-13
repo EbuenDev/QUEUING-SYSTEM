@@ -346,7 +346,9 @@ async function pollMessages() {
       // If popup is open or new messages arrived, re-render messages
       const messagePopup = document.getElementById('message-popup');
       if (messagePopup && !messagePopup.hidden) {
-        renderMessages();
+        // Force scroll to bottom if new messages arrived
+        const hasNewMessages = state.messages.length > oldMessagesLength;
+        renderMessages(hasNewMessages);
       } else if (state.messages.length > oldMessagesLength) {
         // New message arrived but popup is closed - update badge
         updateMessageBadge();
@@ -1967,8 +1969,8 @@ function toggleMessagePopup() {
     messagePopup.hidden = !isHidden;
 
     if (!isHidden) {
-      // Opening the popup
-      renderMessages();
+      // Opening the popup - scroll to bottom
+      renderMessages(true);
       // Mark messages as read after a short delay
       setTimeout(() => {
         postAction('mark-messages-read');
@@ -1984,7 +1986,7 @@ function closeMessagePopup() {
   }
 }
 
-function renderMessages() {
+function renderMessages(forceScrollToBottom = false) {
   const messageList = document.getElementById('message-list');
   if (!messageList) {
     return;
@@ -1994,6 +1996,9 @@ function renderMessages() {
     messageList.innerHTML = '<p class="muted" style="text-align: center; padding: 20px;">No messages yet.</p>';
     return;
   }
+
+  // Check if user is already at the bottom before re-rendering
+  const isAtBottom = messageList.scrollHeight - messageList.scrollTop <= messageList.clientHeight + 50;
 
   const userRole = isAdminAuthenticated() ? 'admin' : 'doctor';
 
@@ -2011,13 +2016,17 @@ function renderMessages() {
     `;
   }).join('');
 
-  // Scroll to bottom to show latest message
-  messageList.scrollTop = messageList.scrollHeight;
+  // Only scroll to bottom if forced or if user was already at the bottom
+  if (forceScrollToBottom || isAtBottom) {
+    messageList.scrollTop = messageList.scrollHeight;
+  }
 }
 
 async function sendMessage(message) {
   const userRole = isAdminAuthenticated() ? 'admin' : 'doctor';
   const receiverRole = userRole === 'admin' ? 'doctor' : 'admin';
+
+  console.log('Sending message:', message, 'from', userRole, 'to', receiverRole);
 
   try {
     const apiUrl = '/backend/api_postgres.php';
@@ -2035,10 +2044,28 @@ async function sendMessage(message) {
     });
 
     const data = await response.json();
+    console.log('Send response:', data);
 
     if (data?.success) {
-      // Refresh state to get new messages
-      await pollMessages();
+      // Immediately add the message to local state for instant display
+      const newMessage = {
+        id: Date.now(), // Temporary ID
+        senderRole: userRole,
+        receiverRole: receiverRole,
+        message: message,
+        isRead: false,
+        createdAt: new Date().toISOString()
+      };
+
+      state.messages.push(newMessage);
+      console.log('Message added to state, total messages:', state.messages.length);
+      renderMessages(true); // Force scroll to bottom when sending
+      updateMessageBadge();
+
+      // Then poll to get the actual message from database
+      setTimeout(() => {
+        pollMessages();
+      }, 500);
     } else {
       console.error('Failed to send message:', data?.message);
     }
@@ -2050,6 +2077,7 @@ async function sendMessage(message) {
 function initMessaging() {
   const messageBtn = document.getElementById('message-btn');
   const closeMessagePopupBtn = document.getElementById('close-message-popup');
+  const cleanupMessagesBtn = document.getElementById('cleanup-messages-btn');
   const messageForm = document.getElementById('message-form');
   const messageInput = document.getElementById('message-input');
   const messagePopup = document.getElementById('message-popup');
@@ -2068,6 +2096,16 @@ function initMessaging() {
     });
   }
 
+  if (cleanupMessagesBtn) {
+    cleanupMessagesBtn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      if (confirm('Delete all messages older than 24 hours?')) {
+        await postAction('cleanup-messages');
+        await pollMessages();
+      }
+    });
+  }
+
   if (messageForm && messageInput) {
     messageForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -2076,7 +2114,6 @@ function initMessaging() {
       if (message) {
         await sendMessage(message);
         messageInput.value = '';
-        renderMessages();
         // Keep focus on input for quick messaging
         messageInput.focus();
       }

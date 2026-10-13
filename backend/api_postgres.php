@@ -309,6 +309,18 @@ function getUnreadMessageCount(PDO $db, string $userRole): int {
     }
 }
 
+function cleanupOldMessages(PDO $db): void {
+    try {
+        // Delete messages older than 24 hours
+        $stmt = $db->prepare("DELETE FROM messages
+                             WHERE created_at < NOW() - INTERVAL '24 hours'");
+        $stmt->execute();
+        error_log('Cleaned up old messages');
+    } catch (PDOException $e) {
+        error_log('Error cleaning up old messages: ' . $e->getMessage());
+    }
+}
+
 function createNotification(PDO $db, array $notification): void {
     try {
         error_log('Creating notification: ' . json_encode($notification));
@@ -382,6 +394,12 @@ if ($method === 'GET') {
         $userRole = 'doctor';
     }
 
+    // Cleanup old messages (run periodically)
+    // Random chance to run cleanup to avoid running on every request
+    if (rand(1, 100) <= 5) { // 5% chance on each GET request
+        cleanupOldMessages($db);
+    }
+
     $messages = loadMessagesFromDatabase($db, $userRole);
     $unreadCount = getUnreadMessageCount($db, $userRole);
 
@@ -402,7 +420,7 @@ if (!is_array($payload)) {
 
 $action = $payload['action'] ?? '';
 $requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
-$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read', 'send-message', 'mark-messages-read'], true);
+$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read', 'send-message', 'mark-messages-read', 'cleanup-messages'], true);
 $requiresSuperAdminAuth = in_array($action, ['create-user', 'list-users', 'update-user', 'delete-user'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
@@ -1112,6 +1130,11 @@ try {
 
             markMessagesAsRead($db, $userRole);
             jsonResponse(['success' => true, 'message' => 'Messages marked as read']);
+            break;
+
+        case 'cleanup-messages':
+            cleanupOldMessages($db);
+            jsonResponse(['success' => true, 'message' => 'Old messages cleaned up']);
             break;
 
         default:

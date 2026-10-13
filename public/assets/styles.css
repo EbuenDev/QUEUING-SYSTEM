@@ -328,6 +328,20 @@ body {
   color: #18324b;
 }
 
+.cleanup-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0;
+  margin-right: 8px;
+  transition: transform 0.2s ease;
+}
+
+.cleanup-btn:hover {
+  transform: scale(1.2);
+}
+
 .close-popup-btn {
   background: transparent;
   border: none;
