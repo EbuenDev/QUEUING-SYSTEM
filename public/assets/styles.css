@@ -946,6 +946,97 @@ body {
     bottom: 20px;
     padding: 0;
   }
+
+  /* Message Button Mobile */
+  .message-btn {
+    padding: 6px 10px;
+  }
+
+  .message-icon {
+    font-size: 1.3rem;
+  }
+
+  .message-badge {
+    min-width: 18px;
+    height: 18px;
+    font-size: 0.7rem;
+  }
+
+  /* Message Popup Mobile */
+  .message-popup {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    transform: translateY(100%);
+  }
+
+  .message-popup:not([hidden]) {
+    transform: translateY(0);
+  }
+
+  .message-list {
+    max-height: 50vh;
+  }
+
+  .message-item {
+    padding: 8px 10px;
+  }
+
+  .message-sender {
+    font-size: 0.7rem;
+  }
+
+  .message-text {
+    font-size: 0.85rem;
+  }
+
+  .message-time {
+    font-size: 0.65rem;
+  }
+
+  .message-form {
+    padding: 10px;
+  }
+
+  .message-form input {
+    font-size: 0.9rem;
+    padding: 10px;
+  }
+
+  .message-form .btn {
+    padding: 10px 14px;
+    font-size: 0.9rem;
+  }
+
+  /* Hamburger Menu Mobile */
+  .hamburger-menu-popup {
+    position: fixed;
+    top: auto;
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    transform: translateY(100%);
+  }
+
+  .hamburger-menu-popup:not([hidden]) {
+    transform: translateY(0);
+  }
+
+  .hamburger-menu-list {
+    padding: 8px 0;
+  }
+
+  .hamburger-menu-link {
+    padding: 14px 16px;
+  }
 }
 
 /* Hamburger Menu Styles */

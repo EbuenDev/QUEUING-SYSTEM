@@ -1862,7 +1862,7 @@ function initHamburgerMenu() {
       });
     }
 
-    // Close menu when clicking outside
+    // Close menu when clicking outside (works for both desktop and mobile)
     document.addEventListener('click', (event) => {
       if (!hamburgerBtn.contains(event.target) && !hamburgerMenu.contains(event.target)) {
         hamburgerMenu.hidden = true;
@@ -2120,7 +2120,7 @@ function initMessaging() {
     });
   }
 
-  // Close popup when clicking outside
+  // Close popup when clicking outside (works for both desktop and mobile)
   if (messagePopup) {
     document.addEventListener('click', (event) => {
       if (!messagePopup.contains(event.target) && !messageBtn.contains(event.target)) {
