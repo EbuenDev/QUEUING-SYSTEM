@@ -617,16 +617,17 @@ function showNotificationPopup(notification) {
 function playNotificationSound() {
   try {
     console.log('Attempting to play notification sound...');
-    
+
     if (!notificationAudio) {
-      notificationAudio = new Audio('/audio/all/sound-9.mp3');
-      console.log('Created new Audio object for /audio/all/sound-9.mp3');
+      notificationAudio = new Audio('/assets/sounds/sound-9.mp3');
+      console.log('Created new Audio object for /assets/sounds/sound-9.mp3');
     }
-    
+
     // Reset and play
     notificationAudio.currentTime = 0;
+    notificationAudio.volume = 0.5;
     const playPromise = notificationAudio.play();
-    
+
     if (playPromise !== undefined) {
       playPromise.then(() => {
         console.log('✓ Sound played successfully');
