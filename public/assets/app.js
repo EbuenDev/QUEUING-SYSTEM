@@ -350,8 +350,9 @@ async function pollMessages() {
         const hasNewMessages = state.messages.length > oldMessagesLength;
         renderMessages(hasNewMessages);
       } else if (state.messages.length > oldMessagesLength) {
-        // New message arrived but popup is closed - update badge
+        // New message arrived but popup is closed - update badge and play sound
         updateMessageBadge();
+        playMessageNotificationSound();
       }
     }
   } catch (error) {
@@ -1950,6 +1951,43 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Messaging functions
+let soundEnabled = localStorage.getItem('messageSoundEnabled') !== 'false'; // Default to true
+
+function playMessageNotificationSound() {
+  if (!soundEnabled) {
+    return;
+  }
+
+  try {
+    const audio = new Audio('/assets/sounds/sound-9.mp3');
+    audio.volume = 0.5; // Set volume to 50%
+    audio.play().catch(error => {
+      console.log('Could not play notification sound:', error);
+    });
+  } catch (error) {
+    console.log('Error playing notification sound:', error);
+  }
+}
+
+function toggleSound() {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem('messageSoundEnabled', soundEnabled.toString());
+
+  const toggleSoundBtn = document.getElementById('toggle-sound-btn');
+  if (toggleSoundBtn) {
+    toggleSoundBtn.textContent = soundEnabled ? '🔔' : '🔇';
+    toggleSoundBtn.title = soundEnabled ? 'Sound notifications enabled' : 'Sound notifications disabled';
+  }
+}
+
+function updateSoundButton() {
+  const toggleSoundBtn = document.getElementById('toggle-sound-btn');
+  if (toggleSoundBtn) {
+    toggleSoundBtn.textContent = soundEnabled ? '🔔' : '🔇';
+    toggleSoundBtn.title = soundEnabled ? 'Sound notifications enabled' : 'Sound notifications disabled';
+  }
+}
+
 function updateMessageBadge() {
   const messageBadge = document.getElementById('message-badge');
   if (messageBadge) {
@@ -1971,6 +2009,7 @@ function toggleMessagePopup() {
     if (!isHidden) {
       // Opening the popup - scroll to bottom
       renderMessages(true);
+      updateSoundButton();
       // Mark messages as read after a short delay
       setTimeout(() => {
         postAction('mark-messages-read');
@@ -2078,6 +2117,7 @@ function initMessaging() {
   const messageBtn = document.getElementById('message-btn');
   const closeMessagePopupBtn = document.getElementById('close-message-popup');
   const cleanupMessagesBtn = document.getElementById('cleanup-messages-btn');
+  const toggleSoundBtn = document.getElementById('toggle-sound-btn');
   const messageForm = document.getElementById('message-form');
   const messageInput = document.getElementById('message-input');
   const messagePopup = document.getElementById('message-popup');
@@ -2103,6 +2143,13 @@ function initMessaging() {
         await postAction('cleanup-messages');
         await pollMessages();
       }
+    });
+  }
+
+  if (toggleSoundBtn) {
+    toggleSoundBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleSound();
     });
   }
 
