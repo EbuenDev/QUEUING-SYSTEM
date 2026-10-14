@@ -18,6 +18,23 @@
     </div>
     </div>
     <div class="topbar-actions">
+        <div class="hamburger-container">
+            <button id="hamburger-menu-btn" class="hamburger-btn" type="button" aria-label="Menu">
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+                <span class="hamburger-line"></span>
+            </button>
+            <div id="hamburger-menu" class="hamburger-menu-popup" hidden>
+                <div class="hamburger-menu-header">
+                    <h3>Menu</h3>
+                    <button id="close-hamburger-popup" class="close-popup-btn" type="button">&times;</button>
+                </div>
+                <ul class="hamburger-menu-list">
+                    <li><a href="#" id="menu-consultation-history" class="hamburger-menu-link">Consultation History</a></li>
+                    <li><button id="menu-logout" class="hamburger-menu-link logout-link">Logout</button></li>
+                </ul>
+            </div>
+        </div>
         <div class="message-container">
             <button id="message-btn" class="message-btn" type="button" aria-label="Messages">
                 <span class="message-icon">💬</span>
@@ -34,23 +51,6 @@
                     <input id="message-input" type="text" placeholder="Type a message..." required />
                     <button type="submit" class="btn btn-primary">Send</button>
                 </form>
-            </div>
-        </div>
-        <div class="hamburger-container">
-            <button id="hamburger-menu-btn" class="hamburger-btn" type="button" aria-label="Menu">
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-                <span class="hamburger-line"></span>
-            </button>
-            <div id="hamburger-menu" class="hamburger-menu-popup" hidden>
-                <div class="hamburger-menu-header">
-                    <h3>Menu</h3>
-                    <button id="close-hamburger-popup" class="close-popup-btn" type="button">&times;</button>
-                </div>
-                <ul class="hamburger-menu-list">
-                    <li><a href="#" id="menu-consultation-history" class="hamburger-menu-link">Consultation History</a></li>
-                    <li><button id="menu-logout" class="hamburger-menu-link logout-link">Logout</button></li>
-                </ul>
             </div>
         </div>
     </div>
@@ -179,6 +179,6 @@
         <button id="notification-close" class="doctor-notification-close" type="button">&times;</button>
     </div>
 
-    <script src="assets/app.js?v=2.4"></script>
+    <script src="assets/app.js?v=2.5"></script>
 </body>
 </html>
