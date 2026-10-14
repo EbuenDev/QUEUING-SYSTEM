@@ -964,19 +964,24 @@ body {
 
   /* Message Popup Mobile */
   .message-popup {
-    position: fixed;
-    top: auto;
+    position: fixed !important;
+    top: auto !important;
     bottom: 0;
     right: 0;
     left: 0;
-    width: 100%;
-    max-width: 100%;
+    width: 100% !important;
+    max-width: 100% !important;
     border-radius: 16px 16px 0 0;
     transform: translateY(100%);
+    z-index: 10000 !important;
   }
 
   .message-popup:not([hidden]) {
     transform: translateY(0);
+  }
+
+  .message-popup-header {
+    border-radius: 16px 16px 0 0;
   }
 
   .message-list {
@@ -1015,19 +1020,24 @@ body {
 
   /* Hamburger Menu Mobile */
   .hamburger-menu-popup {
-    position: fixed;
-    top: auto;
+    position: fixed !important;
+    top: auto !important;
     bottom: 0;
     right: 0;
     left: 0;
-    width: 100%;
-    max-width: 100%;
+    width: 100% !important;
+    max-width: 100% !important;
     border-radius: 16px 16px 0 0;
     transform: translateY(100%);
+    z-index: 10000 !important;
   }
 
   .hamburger-menu-popup:not([hidden]) {
     transform: translateY(0);
+  }
+
+  .hamburger-menu-header {
+    border-radius: 16px 16px 0 0;
   }
 
   .hamburger-menu-list {
@@ -1035,7 +1045,8 @@ body {
   }
 
   .hamburger-menu-link {
-    padding: 14px 16px;
+    padding: 16px 20px;
+    font-size: 1rem;
   }
 }
 
