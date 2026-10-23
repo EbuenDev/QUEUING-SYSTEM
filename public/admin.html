@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="assets/styles.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   </head>
   <body class="admin-body">
     <!-- Top Navigation Bar -->
@@ -123,6 +124,19 @@
                   <div class="stat-value" id="stat-followup">0</div>
                   <div class="stat-label">Follow-ups</div>
                 </div>
+              </div>
+            </div>
+
+            <!-- Consultation Trend Chart -->
+            <div class="card chart-card">
+              <div class="card-header">
+                <h3>Consultation Trend by Quarter</h3>
+                <select id="chart-year" class="sort-dropdown" aria-label="Select year">
+                  <option value="">Loading...</option>
+                </select>
+              </div>
+              <div class="chart-container">
+                <canvas id="consultation-chart"></canvas>
               </div>
             </div>
           </div>
@@ -268,7 +282,13 @@
             <div class="card">
               <div class="card-header">
                 <h3>Recent Consultations</h3>
-                <span id="history-count" class="pill">0 entries</span>
+                <div class="header-actions">
+                  <select id="history-sort" class="sort-dropdown" aria-label="Sort by date">
+                    <option value="newest">Newest First</option>
+                    <option value="oldest">Oldest First</option>
+                  </select>
+                  <span id="history-count" class="pill">0 entries</span>
+                </div>
               </div>
               <ul id="consultation-history" class="queue-list"></ul>
             </div>
@@ -336,6 +356,6 @@
     </div>
 
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
-    <script src="assets/app.js?v=3.9"></script>
+    <script src="assets/app.js?v=4.3"></script>
   </body>
 </html>

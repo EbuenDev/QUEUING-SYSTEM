@@ -13,6 +13,7 @@ services:
       - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
+      - TZ=Asia/Manila
     depends_on:
       postgres:
         condition: service_healthy
@@ -27,6 +28,7 @@ services:
       - POSTGRES_DB=${DB_NAME:-rhu_queue_system}
       - POSTGRES_USER=${DB_USER:-postgres}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - TZ=Asia/Manila
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql

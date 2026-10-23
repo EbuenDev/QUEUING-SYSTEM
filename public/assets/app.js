@@ -846,6 +846,7 @@ function renderClassicPatientBoard() {
 function renderConsultationHistory() {
   const historyList = document.getElementById('consultation-history');
   const historyCount = document.getElementById('history-count');
+  const historySort = document.getElementById('history-sort');
 
   if (!historyList || !historyCount) {
     return;
@@ -858,24 +859,54 @@ function renderConsultationHistory() {
     return;
   }
 
-  historyList.innerHTML = state.consultationHistory
-    .slice()
-    .reverse()
+  // Get sort preference
+  const sortOrder = historySort?.value || 'newest';
+
+  // Sort and render history
+  let sortedHistory = state.consultationHistory.slice();
+
+  if (sortOrder === 'newest') {
+    sortedHistory.reverse();
+  }
+  // If 'oldest', keep as is (already sorted by date ascending)
+
+  historyList.innerHTML = sortedHistory
     .map(
-      (entry) => `
-        <li class="queue-item">
-          <div>
-            <strong>#${entry.queueNumber} — ${escapeHtml(entry.name)}</strong>
-            <small>${escapeHtml(entry.finishedAt || 'Completed')}</small>
-            <small>PH ID: ${escapeHtml(entry.philHealthId || 'N/A')}</small>
-            <small>ICD: ${escapeHtml(entry.icdCode || 'N/A')}</small>
-            <small>Consultation: ${escapeHtml(entry.consultationDetails || 'No notes recorded')}</small>
-          </div>
-          <div class="actions">
-            <button class="btn btn-secondary" type="button" data-action="edit-history" data-id="${entry.id || ''}">Edit</button>
-          </div>
-        </li>
-      `,
+      (entry) => {
+        // Convert UTC timestamp to local time
+        let displayTime = 'Completed';
+        if (entry.finishedAt) {
+          try {
+            const date = new Date(entry.finishedAt + 'Z'); // Treat as UTC
+            displayTime = date.toLocaleString('en-PH', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hour12: true
+            });
+          } catch (e) {
+            displayTime = entry.finishedAt;
+          }
+        }
+
+        return `
+          <li class="queue-item">
+            <div>
+              <strong>#${entry.queueNumber} — ${escapeHtml(entry.name)}</strong>
+              <small>${escapeHtml(displayTime)}</small>
+              <small>PH ID: ${escapeHtml(entry.philHealthId || 'N/A')}</small>
+              <small>ICD: ${escapeHtml(entry.icdCode || 'N/A')}</small>
+              <small>Consultation: ${escapeHtml(entry.consultationDetails || 'No notes recorded')}</small>
+            </div>
+            <div class="actions">
+              <button class="btn btn-secondary" type="button" data-action="edit-history" data-id="${entry.id || ''}">Edit</button>
+            </div>
+          </li>
+        `;
+      }
     )
     .join('');
 }
@@ -1582,6 +1613,22 @@ function initAdminPage() {
   }
 
   initHistoryEditForm();
+
+  // History sort dropdown
+  const historySort = document.getElementById('history-sort');
+  if (historySort) {
+    historySort.addEventListener('change', () => {
+      renderConsultationHistory();
+    });
+  }
+
+  // Chart year dropdown
+  const chartYear = document.getElementById('chart-year');
+  if (chartYear) {
+    chartYear.addEventListener('change', () => {
+      updateConsultationChart();
+    });
+  }
 
   if (printConsultationButton) {
     printConsultationButton.addEventListener('click', printConsultationHistory);
@@ -2466,6 +2513,159 @@ function updateDashboardStats() {
   if (statServing) statServing.textContent = servingPatient ? `#${servingPatient.queueNumber}` : '---';
   if (statCompleted) statCompleted.textContent = completedToday;
   if (statFollowup) statFollowup.textContent = followUpCount;
+
+  // Update chart
+  updateConsultationChart();
+}
+
+// Consultation Chart
+let consultationChart = null;
+let lastChartUpdateDate = null;
+let lastChartUpdateYear = null;
+
+function updateConsultationChart() {
+  const canvas = document.getElementById('consultation-chart');
+  const yearSelect = document.getElementById('chart-year');
+
+  if (!canvas || !yearSelect) {
+    return;
+  }
+
+  // Only update chart once per day or when year changes
+  const today = new Date().toDateString();
+  const selectedYear = parseInt(yearSelect.value);
+
+  if (lastChartUpdateDate === today && lastChartUpdateYear === selectedYear) {
+    return; // Skip update if already updated today for this year
+  }
+
+  // Populate year dropdown based on consultation history
+  if (state.consultationHistory && state.consultationHistory.length > 0) {
+    const years = new Set();
+    const currentYear = new Date().getFullYear();
+    years.add(currentYear);
+
+    state.consultationHistory.forEach(entry => {
+      if (entry.finishedAt) {
+        try {
+          const date = new Date(entry.finishedAt + 'Z');
+          years.add(date.getFullYear());
+        } catch (e) {
+          // Skip invalid dates
+        }
+      }
+    });
+
+    // Clear existing options
+    yearSelect.innerHTML = '';
+
+    // Add years in descending order
+    Array.from(years).sort((a, b) => b - a).forEach(year => {
+      const option = document.createElement('option');
+      option.value = year;
+      option.textContent = year;
+      if (year === currentYear) {
+        option.selected = true;
+      }
+      yearSelect.appendChild(option);
+    });
+  } else {
+    // No history, show current year only
+    const currentYear = new Date().getFullYear();
+    yearSelect.innerHTML = `<option value="${currentYear}" selected>${currentYear}</option>`;
+  }
+
+  // Process consultation history by quarter
+  const quarterlyData = [0, 0, 0, 0]; // Q1, Q2, Q3, Q4
+
+  if (state.consultationHistory && state.consultationHistory.length > 0) {
+    state.consultationHistory.forEach(entry => {
+      if (entry.finishedAt) {
+        try {
+          const date = new Date(entry.finishedAt + 'Z');
+          const entryYear = date.getFullYear();
+
+          if (entryYear === selectedYear) {
+            const month = date.getMonth(); // 0-11
+            const quarter = Math.floor(month / 3); // 0-3
+            quarterlyData[quarter]++;
+          }
+        } catch (e) {
+          // Skip invalid dates
+        }
+      }
+    });
+  }
+
+  // Destroy existing chart if it exists
+  if (consultationChart) {
+    consultationChart.destroy();
+  }
+
+  // Create new chart
+  const ctx = canvas.getContext('2d');
+  consultationChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ['Q1 (Jan-Mar)', 'Q2 (Apr-Jun)', 'Q3 (Jul-Sep)', 'Q4 (Oct-Dec)'],
+      datasets: [{
+        label: 'Consultations',
+        data: quarterlyData,
+        borderColor: '#2563EB',
+        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+        borderWidth: 3,
+        fill: true,
+        tension: 0.4,
+        pointBackgroundColor: '#2563EB',
+        pointBorderColor: '#fff',
+        pointBorderWidth: 2,
+        pointRadius: 6,
+        pointHoverRadius: 8
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          backgroundColor: '#1e293b',
+          titleColor: '#fff',
+          bodyColor: '#fff',
+          borderColor: '#2563EB',
+          borderWidth: 1,
+          padding: 12,
+          displayColors: false
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            color: '#64748B',
+            stepSize: 1
+          },
+          grid: {
+            color: '#E2E8F0'
+          }
+        },
+        x: {
+          ticks: {
+            color: '#64748B'
+          },
+          grid: {
+            display: false
+          }
+        }
+      }
+    }
+  });
+
+  // Mark as updated
+  lastChartUpdateDate = today;
+  lastChartUpdateYear = selectedYear;
 }
 
 // Initialize admin navigation on page load
