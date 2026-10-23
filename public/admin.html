@@ -8,36 +8,17 @@
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
   </head>
-  <body>
-    <header class="topbar">
-      <div class="topbar-left">
+  <body class="admin-body">
+    <!-- Top Navigation Bar -->
+    <header class="admin-header">
+      <div class="header-left">
         <img class="header-logo" src="assets/logo.png" alt="RHU II Logo" />
-        <div>
-          <p class="eyebrow">Municipal Health Office</p>
+        <div class="header-info">
+          <p class="eyebrow">MUNICIPAL HEALTH OFFICE</p>
           <h1>Rural Health Unit II</h1>
-          <p>may patient pa ba?
-            .</p>
         </div>
       </div>
-      <div class="topbar-actions">
-        <div class="hamburger-container">
-          <button id="hamburger-menu-btn" class="hamburger-btn" type="button" aria-label="Menu">
-            <span class="hamburger-line"></span>
-            <span class="hamburger-line"></span>
-            <span class="hamburger-line"></span>
-          </button>
-          <div id="hamburger-menu" class="hamburger-menu-popup" hidden>
-            <div class="hamburger-menu-header">
-              <h3>Menu</h3>
-              <button id="close-hamburger-popup" class="close-popup-btn" type="button">&times;</button>
-            </div>
-            <ul class="hamburger-menu-list">
-              <li><a href="index.html" class="hamburger-menu-link">Patient Display</a></li>
-              <li><a href="bhw.html" class="hamburger-menu-link">BHW Panel</a></li>
-              <li><button id="menu-logout" class="hamburger-menu-link logout-link">Logout</button></li>
-            </ul>
-          </div>
-        </div>
+      <div class="header-right">
         <div class="message-container">
           <button id="message-btn" class="message-btn" type="button" aria-label="Messages">
             <span class="message-icon">💬</span>
@@ -57,152 +38,304 @@
             </form>
           </div>
         </div>
+        <button id="menu-logout" class="logout-btn">Logout</button>
       </div>
     </header>
 
-    <main class="board admin-board">
-      <section id="login-card" class="card auth-card">
-        <h2>Admin Login</h2>
-        <p class="muted">Sign in to manage the queue.</p>
-        <form id="admin-login-form" class="auth-form" method="post" action="">
-          <input id="admin-username" name="username" type="text" placeholder="Username" autocomplete="username" required />
-          <input id="admin-password" name="password" type="password" placeholder="Password" autocomplete="current-password" required />
-          <button type="submit" class="btn btn-primary">Log In</button>
-        </form>
-        <p id="login-error" class="auth-error" role="alert"></p>
-      </section>
+    <div class="admin-layout">
+      <!-- Left Sidebar -->
+      <aside class="admin-sidebar">
+        <nav class="sidebar-nav">
+          <button class="nav-item active" data-page="dashboard">
+            <span class="nav-icon">📊</span>
+            <span class="nav-label">Overview</span>
+          </button>
+          <button class="nav-item" data-page="queue">
+            <span class="nav-icon">👥</span>
+            <span class="nav-label">Patient Queue</span>
+          </button>
+          <button class="nav-item" data-page="records">
+            <span class="nav-icon">📋</span>
+            <span class="nav-label">Patient Records</span>
+          </button>
+          <button class="nav-item" data-page="followup">
+            <span class="nav-icon">🔄</span>
+            <span class="nav-label">Follow-up</span>
+          </button>
+          <button class="nav-item" data-page="video">
+            <span class="nav-icon">📺</span>
+            <span class="nav-label">Video Management</span>
+          </button>
+          <button class="nav-item" data-page="history">
+            <span class="nav-icon">📝</span>
+            <span class="nav-label">Consultation History</span>
+          </button>
+        </nav>
+      </aside>
 
-      <section id="admin-panel" class="card full-width" hidden>
-        <form id="patient-form" class="patient-form" method="post" action="">
-          <input id="patient-name" name="name" type="text" placeholder="Full Name" required />
-          <input id="patient-philhealth-id" name="philHealthId" type="text" placeholder="PhilHealth ID" />
-          <select id="patient-status" name="patientStatus" aria-label="Patient Status">
-            <option value="regular">REGULAR</option>
-            <option value="senior">SENIOR</option>
-            <option value="pwd">PWD</option>
-            <option value="emergency">EMERGENCY</option>
-          </select>
-          <select id="philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
-            <option value="no-philhealth">NO PHILHEALTH</option>
-            <option value="registered">REGISTERED</option>
-            <option value="not-registered">NOT REGISTERED</option>
-            <option value="other-facility">OTHER FACILITY</option>
-          </select>
-          <button type="submit" class="btn btn-primary">Add Patient</button>
-        </form>
-
-        <div id="edit-patient-modal" class="card edit-modal" hidden>
-          <h3>Edit Patient</h3>
-          <form id="edit-patient-form" class="patient-form" method="post" action="">
-            <input id="edit-patient-id" type="hidden" />
-            <input id="edit-patient-name" name="name" type="text" placeholder="Full Name" required />
-            <input id="edit-patient-philhealth-id" name="philHealthId" type="text" placeholder="PhilHealth ID" />
-            <select id="edit-patient-status" name="patientStatus" aria-label="Patient Status">
-              <option value="regular">REGULAR</option>
-              <option value="senior">SENIOR</option>
-              <option value="pwd">PWD</option>
-              <option value="emergency">EMERGENCY</option>
-            </select>
-            <select id="edit-philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
-              <option value="no-philhealth">NO PHILHEALTH</option>
-              <option value="registered">REGISTERED</option>
-              <option value="not-registered">NOT REGISTERED</option>
-              <option value="other-facility">OTHER FACILITY</option>
-            </select>
-            <div class="toolbar">
-              <button type="submit" class="btn btn-primary">Save Changes</button>
-              <button type="button" id="cancel-edit-btn" class="btn btn-secondary">Cancel</button>
-            </div>
+      <!-- Main Content Area -->
+      <main class="admin-main">
+        <!-- Login Card -->
+        <section id="login-card" class="card auth-card">
+          <h2>Admin Login</h2>
+          <p class="muted">Sign in to manage the queue.</p>
+          <form id="admin-login-form" class="auth-form" method="post" action="">
+            <input id="admin-username" name="username" type="text" placeholder="Username" autocomplete="username" required />
+            <input id="admin-password" name="password" type="password" placeholder="Password" autocomplete="current-password" required />
+            <button type="submit" class="btn btn-primary">Log In</button>
           </form>
-        </div>
+          <p id="login-error" class="auth-error" role="alert"></p>
+        </section>
 
-        <div class="section-header">
-          <h2>Current Patient</h2>
-          <span id="admin-patient-count" class="pill">0 patients in queue</span>
-        </div>
-        <div id="admin-current-patient" class="queue-item doctor-current-patient-card">
-          <strong>No patient is being served yet.</strong>
-          <div class="badge-group">
-            <span class="badge waiting">Waiting</span>
+        <!-- Admin Panel -->
+        <section id="admin-panel" class="admin-content" hidden>
+          <!-- Overview Dashboard -->
+          <div id="page-dashboard" class="page-section active">
+            <div class="page-header">
+              <h2>Dashboard Overview</h2>
+              <p class="page-subtitle">Quick view of today's queue status</p>
+            </div>
+            <div class="dashboard-grid">
+              <div class="stat-card stat-queue">
+                <div class="stat-icon">👥</div>
+                <div class="stat-info">
+                  <div class="stat-value" id="stat-queue-count">0</div>
+                  <div class="stat-label">Patients In Queue</div>
+                </div>
+              </div>
+              <div class="stat-card stat-serving">
+                <div class="stat-icon">🩺</div>
+                <div class="stat-info">
+                  <div class="stat-value" id="stat-serving">---</div>
+                  <div class="stat-label">Now Serving</div>
+                </div>
+              </div>
+              <div class="stat-card stat-completed">
+                <div class="stat-icon">✅</div>
+                <div class="stat-info">
+                  <div class="stat-value" id="stat-completed">0</div>
+                  <div class="stat-label">Completed Today</div>
+                </div>
+              </div>
+              <div class="stat-card stat-followup">
+                <div class="stat-icon">🔄</div>
+                <div class="stat-info">
+                  <div class="stat-value" id="stat-followup">0</div>
+                  <div class="stat-label">Follow-ups</div>
+                </div>
+              </div>
+            </div>
           </div>
-          <small>Queue # — Full Name</small>
-          <small>PH ID: N/A</small>
-        </div>
-        <div class="toolbar">
-          <button id="admin-serve-next-btn" class="btn btn-primary" type="button">Next Patient</button>
-          <button id="admin-recall-btn" class="btn btn-secondary" type="button">Recall</button>
-          <button id="admin-skip-btn" class="btn btn-warning" type="button">Skip</button>
-          <button id="admin-finish-btn" class="btn btn-success" type="button">Finish</button>
-          <button id="admin-followup-btn" class="btn btn-info" type="button">Send to Follow-up</button>
-        </div>
 
-        <div class="section-header">
-          <h2>Next Patient in Line</h2>
-        </div>
-        <div id="admin-next-patient" class="queue-item">
-          <strong>No queue yet.</strong>
-          <small>Awaiting the next patient.</small>
-        </div>
+          <!-- Patient Queue Page -->
+          <div id="page-queue" class="page-section">
+            <div class="page-header">
+              <h2>Patient Queue</h2>
+              <p class="page-subtitle">Manage patient queue and appointments</p>
+            </div>
 
-        <div class="toolbar">
-          <button id="reset-btn" class="btn btn-secondary">Reset Queue</button>
-          <button id="print-consultation-btn" class="btn btn-secondary" type="button">Print Consultation</button>
-        </div>
+            <!-- Add Patient Card -->
+            <div class="card">
+              <h3>Add New Patient</h3>
+              <form id="patient-form" class="patient-form" method="post" action="">
+                <div class="form-grid">
+                  <input id="patient-name" name="name" type="text" placeholder="Full Name" required />
+                  <input id="patient-philhealth-id" name="philHealthId" type="text" placeholder="PhilHealth ID" />
+                  <select id="patient-status" name="patientStatus" aria-label="Patient Status">
+                    <option value="regular">REGULAR</option>
+                    <option value="senior">SENIOR</option>
+                    <option value="pwd">PWD</option>
+                    <option value="emergency">EMERGENCY</option>
+                  </select>
+                  <select id="philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
+                    <option value="no-philhealth">NO PHILHEALTH</option>
+                    <option value="registered">REGISTERED</option>
+                    <option value="not-registered">NOT REGISTERED</option>
+                    <option value="other-facility">OTHER FACILITY</option>
+                  </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Add Patient</button>
+              </form>
+            </div>
 
-        <div class="section-header">
-          <h2>Patient List</h2>
-          <span id="admin-count" class="pill">0 patients</span>
-        </div>
-        <ul id="patient-list" class="queue-list admin-list"></ul>
+            <!-- Current Patient Card -->
+            <div class="card card-serving">
+              <div class="card-header">
+                <h3>Current Patient</h3>
+                <span id="admin-patient-count" class="pill">0 patients in queue</span>
+              </div>
+              <div id="admin-current-patient" class="current-patient-display">
+                <strong>No patient is being served yet.</strong>
+                <div class="badge-group">
+                  <span class="badge waiting">Waiting</span>
+                </div>
+                <small>Queue # — Full Name</small>
+                <small>PH ID: N/A</small>
+              </div>
+              <div class="action-row">
+                <button id="admin-serve-next-btn" class="btn btn-primary" type="button">Next Patient</button>
+                <button id="admin-recall-btn" class="btn btn-secondary" type="button">Recall</button>
+                <button id="admin-skip-btn" class="btn btn-warning" type="button">Skip</button>
+                <button id="admin-finish-btn" class="btn btn-success" type="button">Finish</button>
+                <button id="admin-followup-btn" class="btn btn-info" type="button">Send to Follow-up</button>
+              </div>
+            </div>
 
-        <div id="admin-followup-section" class="card full-width" hidden>
-          <div class="section-header">
-            <h2>Return / Follow-up Patients</h2>
+            <!-- Next Patient Card -->
+            <div class="card">
+              <h3>Next Patient in Line</h3>
+              <div id="admin-next-patient" class="next-patient-display">
+                <strong>No queue yet.</strong>
+                <small>Awaiting the next patient.</small>
+              </div>
+            </div>
+
+            <!-- Waiting List Card -->
+            <div class="card">
+              <div class="card-header">
+                <h3>Waiting List</h3>
+                <span id="admin-count" class="pill">0 patients</span>
+              </div>
+              <ul id="patient-list" class="queue-list admin-list"></ul>
+            </div>
+
+            <!-- Utility Actions -->
+            <div class="card utility-card">
+              <h3>Utilities</h3>
+              <div class="utility-actions">
+                <button id="reset-btn" class="btn btn-secondary">Reset Queue</button>
+                <button id="print-consultation-btn" class="btn btn-secondary" type="button">Print Consultation</button>
+              </div>
+            </div>
           </div>
-          <ul id="admin-followup-list" class="queue-list admin-list"></ul>
-        </div>
 
-        <div id="edit-history-modal" class="card edit-modal" hidden>
-          <h3>Edit Recent Checkup</h3>
-          <form id="edit-history-form" class="patient-form" method="post" action="">
-            <input id="edit-history-id" type="hidden" />
-            <input id="edit-history-icd-code" name="icdCode" type="text" placeholder="ICD Code" required />
-            <textarea id="edit-history-consultation" name="consultationDetails" rows="4" placeholder="Consultation details"></textarea>
-            <div class="toolbar">
-              <button type="submit" class="btn btn-primary">Save Changes</button>
-              <button type="button" id="cancel-history-edit-btn" class="btn btn-secondary">Cancel</button>
+          <!-- Patient Records Page -->
+          <div id="page-records" class="page-section">
+            <div class="page-header">
+              <h2>Patient Records</h2>
+              <p class="page-subtitle">View and manage patient information</p>
             </div>
-          </form>
-        </div>
-
-        <div id="followup-modal" class="card edit-modal" hidden>
-          <h3>Send to Follow-up</h3>
-          <p id="followup-patient-name" class="muted"></p>
-          <form id="followup-form" class="patient-form" method="post" action="">
-            <input id="followup-patient-id" type="hidden" />
-            <label for="followup-reason">Follow-up Reason:</label>
-            <select id="followup-reason" name="followUpReason" required>
-              <option value="Laboratory">Laboratory</option>
-              <option value="Pharmacy">Pharmacy</option>
-              <option value="X-Ray">X-Ray</option>
-              <option value="Other">Other</option>
-            </select>
-            <div class="toolbar">
-              <button type="submit" class="btn btn-primary">Confirm</button>
-              <button type="button" id="cancel-followup-btn" class="btn btn-secondary">Cancel</button>
+            <div class="card">
+              <div class="card-header">
+                <h3>All Patients</h3>
+                <span id="admin-count" class="pill">0 patients</span>
+              </div>
+              <ul id="patient-list" class="queue-list admin-list"></ul>
             </div>
-          </form>
-        </div>
+          </div>
 
-        <div class="section-header">
-          <h2>Consultation History</h2>
-          <span id="history-count" class="pill">0 entries</span>
-        </div>
-        <ul id="consultation-history" class="queue-list"></ul>
-      </section>
-    </main>
+          <!-- Follow-up Page -->
+          <div id="page-followup" class="page-section">
+            <div class="page-header">
+              <h2>Follow-up Patients</h2>
+              <p class="page-subtitle">Manage return and follow-up appointments</p>
+            </div>
+            <div id="admin-followup-section" class="card">
+              <ul id="admin-followup-list" class="queue-list admin-list"></ul>
+            </div>
+          </div>
+
+          <!-- Video Management Page -->
+          <div id="page-video" class="page-section">
+            <div class="page-header">
+              <h2>Video Management</h2>
+              <p class="page-subtitle">Configure YouTube playlist for waiting room display</p>
+            </div>
+            <div class="card">
+              <form id="video-config-form" class="patient-form" method="post" action="">
+                <div class="form-grid">
+                  <input id="video-playlist-url" name="playlistUrl" type="text" placeholder="YouTube Playlist URL (e.g., https://www.youtube.com/playlist?list=...)" />
+                  <input id="video-playlist-title" name="playlistTitle" type="text" placeholder="Playlist Title (optional)" />
+                  <select id="video-enabled" name="isEnabled" aria-label="Enable Video">
+                    <option value="false">Disabled</option>
+                    <option value="true">Enabled</option>
+                  </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Video Configuration</button>
+              </form>
+              <div id="video-config-status" class="muted" style="margin-top: 12px;">
+                <strong>Current Status:</strong> <span id="video-status-text">Not configured</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Consultation History Page -->
+          <div id="page-history" class="page-section">
+            <div class="page-header">
+              <h2>Consultation History</h2>
+              <p class="page-subtitle">View completed consultations</p>
+            </div>
+            <div class="card">
+              <div class="card-header">
+                <h3>Recent Consultations</h3>
+                <span id="history-count" class="pill">0 entries</span>
+              </div>
+              <ul id="consultation-history" class="queue-list"></ul>
+            </div>
+          </div>
+
+          <!-- Modals (Hidden by default) -->
+          <div id="edit-patient-modal" class="card edit-modal" hidden>
+            <h3>Edit Patient</h3>
+            <form id="edit-patient-form" class="patient-form" method="post" action="">
+              <input id="edit-patient-id" type="hidden" />
+              <input id="edit-patient-name" name="name" type="text" placeholder="Full Name" required />
+              <input id="edit-patient-philhealth-id" name="philHealthId" type="text" placeholder="PhilHealth ID" />
+              <select id="edit-patient-status" name="patientStatus" aria-label="Patient Status">
+                <option value="regular">REGULAR</option>
+                <option value="senior">SENIOR</option>
+                <option value="pwd">PWD</option>
+                <option value="emergency">EMERGENCY</option>
+              </select>
+              <select id="edit-philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
+                <option value="no-philhealth">NO PHILHEALTH</option>
+                <option value="registered">REGISTERED</option>
+                <option value="not-registered">NOT REGISTERED</option>
+                <option value="other-facility">OTHER FACILITY</option>
+              </select>
+              <div class="toolbar">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" id="cancel-edit-btn" class="btn btn-secondary">Cancel</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="edit-history-modal" class="card edit-modal" hidden>
+            <h3>Edit Recent Checkup</h3>
+            <form id="edit-history-form" class="patient-form" method="post" action="">
+              <input id="edit-history-id" type="hidden" />
+              <input id="edit-history-icd-code" name="icdCode" type="text" placeholder="ICD Code" required />
+              <textarea id="edit-history-consultation" name="consultationDetails" rows="4" placeholder="Consultation details"></textarea>
+              <div class="toolbar">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+                <button type="button" id="cancel-history-edit-btn" class="btn btn-secondary">Cancel</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="followup-modal" class="card edit-modal" hidden>
+            <h3>Send to Follow-up</h3>
+            <p id="followup-patient-name" class="muted"></p>
+            <form id="followup-form" class="patient-form" method="post" action="">
+              <input id="followup-patient-id" type="hidden" />
+              <label for="followup-reason">Follow-up Reason:</label>
+              <select id="followup-reason" name="followUpReason" required>
+                <option value="Laboratory">Laboratory</option>
+                <option value="Pharmacy">Pharmacy</option>
+                <option value="X-Ray">X-Ray</option>
+                <option value="Other">Other</option>
+              </select>
+              <div class="toolbar">
+                <button type="submit" class="btn btn-primary">Confirm</button>
+                <button type="button" id="cancel-followup-btn" class="btn btn-secondary">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </main>
+    </div>
 
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
-    <script src="assets/app.js?v=2.9"></script>
+    <script src="assets/app.js?v=3.9"></script>
   </body>
 </html>

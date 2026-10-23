@@ -3,58 +3,77 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RHU II Patient Panel</title>
+    <title>RHU II Patient Queue - Waiting Room</title>
     <link rel="stylesheet" href="assets/styles.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
+    <script src="https://www.youtube.com/iframe_api"></script>
   </head>
-  <body>
-    <header class="topbar">
-      <div class="topbar-left">
+  <body class="waiting-room">
+    <header class="waiting-room-header">
+      <div class="header-left">
         <img class="header-logo" src="assets/logo.png" alt="RHU II Logo" />
-        <div>
-          <p class="eyebrow">Municipal Health Office</p>
-          <h1>Rural Health Unit II</h1>
-          <p>Please wait for your turn.</p>
-
+        <div class="header-info">
+          <p class="eyebrow">MUNICIPAL HEALTH OFFICE</p>
+          <h1 class="header-title">Rural Health Unit II</h1>
         </div>
       </div>
-      <div class="topbar-actions">
-        <div id="live-clock" class="live-clock" aria-live="polite">--:-- --</div>
+      <div class="header-right">
+        <div class="clock-container">
+          <div id="live-clock" class="header-clock">--:--:--</div>
+          <div id="live-date" class="header-date">Loading...</div>
+        </div>
       </div>
     </header>
 
-    <main class="board">
-      <section class="card spotlight">
-        <h2 id="current-serving-heading" hidden>Currently Serving</h2>
-        <div class="spotlight-title-row">
-          <div id="current-serving" class="large-number">Waiting for the first patient</div>
-          <div id="current-serving-name" class="spotlight-name">No patient is being served yet.</div>
+    <main class="waiting-room-main">
+      <!-- Left Column: Patient Queue Information -->
+      <section class="queue-column">
+        <div class="queue-card now-serving-card">
+          <div class="card-label">NOW SERVING</div>
+          <div id="current-serving" class="queue-number">---</div>
+          <div id="current-serving-message" class="queue-message">Please wait for the first patient</div>
+        </div>
+
+        <div class="queue-card next-patient-card">
+          <div class="card-label">NEXT PATIENT</div>
+          <div id="next-patient" class="queue-number">---</div>
+        </div>
+
+        <div class="queue-card waiting-list-card">
+          <div class="card-header">
+            <h2 class="card-title">Waiting List</h2>
+            <span id="queue-count" class="count-badge">0 patients</span>
+          </div>
+          <ul id="waiting-list" class="waiting-list"></ul>
+        </div>
+
+        <div id="followup-section" class="queue-card followup-card" hidden>
+          <div class="card-header">
+            <h2 class="card-title">RETURN / FOLLOW-UP</h2>
+          </div>
+          <ul id="followup-list" class="waiting-list"></ul>
         </div>
       </section>
 
-      <section class="card">
-        <h2>Next Patient</h2>
-        <div id="next-patient" class="next-patient">No queue yet</div>
-      </section>
-
-      <section class="card full-width">
-        <div class="section-header">
-          <h2>Waiting List</h2>
-          <span id="queue-count" class="pill">0 patients</span>
+      <!-- Right Column: Health Education Video Player -->
+      <section class="video-column">
+        <div class="video-card">
+          <div class="card-header">
+            <h2 class="card-title">Health Education</h2>
+            <span class="card-subtitle">YouTube playlist</span>
+          </div>
+          <div id="youtube-player-container" class="youtube-player-container">
+            <div id="youtube-placeholder" class="youtube-placeholder">
+              <div class="placeholder-icon">📺</div>
+              <div class="placeholder-text">No playlist configured</div>
+            </div>
+            <div id="youtube-player" class="youtube-player"></div>
+          </div>
         </div>
-        <ul id="waiting-list" class="queue-list"></ul>
-      </section>
-
-      <section id="followup-section" class="card full-width" hidden>
-        <div class="section-header">
-          <h2>RETURN / FOLLOW-UP</h2>
-        </div>
-        <ul id="followup-list" class="queue-list"></ul>
       </section>
     </main>
 
-    <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
-    <script src="assets/app.js?v=2.9"></script>
+    <script src="assets/app.js?v=3.9"></script>
   </body>
 </html>

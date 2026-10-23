@@ -98,6 +98,15 @@ function getDefaultState(): array {
         'patients' => [],
         'nextQueueNumber' => 1,
         'consultationHistory' => [],
+        'videoConfig' => [
+            'id' => 1,
+            'playlistId' => '',
+            'playlistTitle' => '',
+            'playlistUrl' => '',
+            'isEnabled' => false,
+            'updatedAt' => null,
+            'updatedBy' => null
+        ],
     ];
 }
 
@@ -157,11 +166,15 @@ function loadStateFromDatabase(PDO $db): array {
         $stmt->execute();
         $queueManagement = $stmt->fetch();
         $nextQueueNumber = $queueManagement ? (int)$queueManagement['nextqueuenumber'] : 1;
-        
+
+        // Load video configuration
+        $videoConfig = loadVideoConfig($db);
+
         return [
             'patients' => $patients,
             'nextQueueNumber' => $nextQueueNumber,
             'consultationHistory' => $consultationHistory,
+            'videoConfig' => $videoConfig,
         ];
     } catch (PDOException $e) {
         error_log('Error loading state from database: ' . $e->getMessage());
@@ -319,6 +332,88 @@ function cleanupOldMessages(PDO $db): void {
     } catch (PDOException $e) {
         error_log('Error cleaning up old messages: ' . $e->getMessage());
     }
+}
+
+function loadVideoConfig(PDO $db): array {
+    try {
+        $stmt = $db->prepare("SELECT id, playlist_id, playlist_title, playlist_url, is_enabled, updated_at, updated_by
+                             FROM video_config
+                             WHERE id = 1");
+        $stmt->execute();
+        $config = $stmt->fetch();
+
+        if ($config) {
+            return [
+                'id' => (int)$config['id'],
+                'playlistId' => $config['playlist_id'],
+                'playlistTitle' => $config['playlist_title'],
+                'playlistUrl' => $config['playlist_url'],
+                'isEnabled' => (bool)$config['is_enabled'],
+                'updatedAt' => $config['updated_at'],
+                'updatedBy' => $config['updated_by']
+            ];
+        }
+
+        return [
+            'id' => 1,
+            'playlistId' => '',
+            'playlistTitle' => '',
+            'playlistUrl' => '',
+            'isEnabled' => false,
+            'updatedAt' => null,
+            'updatedBy' => null
+        ];
+    } catch (PDOException $e) {
+        error_log('Error loading video config: ' . $e->getMessage());
+        return [
+            'id' => 1,
+            'playlistId' => '',
+            'playlistTitle' => '',
+            'playlistUrl' => '',
+            'isEnabled' => false,
+            'updatedAt' => null,
+            'updatedBy' => null
+        ];
+    }
+}
+
+function saveVideoConfig(PDO $db, array $config): void {
+    try {
+        $stmt = $db->prepare("INSERT INTO video_config (id, playlist_id, playlist_title, playlist_url, is_enabled, updated_by)
+                             VALUES (1, :playlistId, :playlistTitle, :playlistUrl, :isEnabled, :updatedBy)
+                             ON CONFLICT (id) DO UPDATE
+                             SET playlist_id = EXCLUDED.playlist_id,
+                                 playlist_title = EXCLUDED.playlist_title,
+                                 playlist_url = EXCLUDED.playlist_url,
+                                 is_enabled = EXCLUDED.is_enabled,
+                                 updated_by = EXCLUDED.updated_by,
+                                 updated_at = CURRENT_TIMESTAMP");
+
+        $stmt->execute([
+            ':playlistId' => $config['playlistId'],
+            ':playlistTitle' => $config['playlistTitle'],
+            ':playlistUrl' => $config['playlistUrl'],
+            ':isEnabled' => $config['isEnabled'] ? 'true' : 'false',
+            ':updatedBy' => $config['updatedBy']
+        ]);
+    } catch (PDOException $e) {
+        error_log('Error saving video config: ' . $e->getMessage());
+        throw $e;
+    }
+}
+
+function extractYoutubePlaylistId(string $url): ?string {
+    // Extract playlist ID from various YouTube URL formats
+    // Examples:
+    // https://www.youtube.com/playlist?list=PLxyz123
+    // https://youtube.com/playlist?list=PLxyz123
+    // youtube.com/playlist?list=PLxyz123
+
+    if (preg_match('/[?&]list=([^&]+)/', $url, $matches)) {
+        return $matches[1];
+    }
+
+    return null;
 }
 
 function createNotification(PDO $db, array $notification): void {
@@ -1135,6 +1230,46 @@ try {
         case 'cleanup-messages':
             cleanupOldMessages($db);
             jsonResponse(['success' => true, 'message' => 'Old messages cleaned up']);
+            break;
+
+        case 'get-video-config':
+            $videoConfig = loadVideoConfig($db);
+            jsonResponse(['success' => true, 'videoConfig' => $videoConfig]);
+            break;
+
+        case 'save-video-config':
+            if (!isAdminAuthenticated()) {
+                jsonResponse(['success' => false, 'message' => 'Admin authentication required'], 401);
+                exit;
+            }
+
+            $playlistUrl = trim((string) ($payload['playlistUrl'] ?? ''));
+            $playlistTitle = trim((string) ($payload['playlistTitle'] ?? ''));
+            $isEnabled = (bool) ($payload['isEnabled'] ?? false);
+
+            if ($playlistUrl !== '') {
+                $playlistId = extractYoutubePlaylistId($playlistUrl);
+                if (!$playlistId) {
+                    jsonResponse(['success' => false, 'message' => 'Invalid YouTube playlist URL'], 400);
+                    exit;
+                }
+            } else {
+                $playlistId = '';
+            }
+
+            try {
+                $updatedBy = $_SESSION['username'] ?? 'admin';
+                saveVideoConfig($db, [
+                    'playlistId' => $playlistId,
+                    'playlistTitle' => $playlistTitle,
+                    'playlistUrl' => $playlistUrl,
+                    'isEnabled' => $isEnabled,
+                    'updatedBy' => $updatedBy
+                ]);
+                jsonResponse(['success' => true, 'message' => 'Video configuration saved successfully']);
+            } catch (Exception $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to save video configuration'], 500);
+            }
             break;
 
         default:

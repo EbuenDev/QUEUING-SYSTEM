@@ -4,6 +4,15 @@ let state = {
   consultationHistory: [],
   messages: [],
   unreadCount: 0,
+  videoConfig: {
+    id: 1,
+    playlistId: '',
+    playlistTitle: '',
+    playlistUrl: '',
+    isEnabled: false,
+    updatedAt: null,
+    updatedBy: null
+  },
 };
 
 let updateChannel = null;
@@ -655,6 +664,87 @@ function getFollowUpPatients() {
 
 //This function renders the patient board, displaying the current serving patient, the next patient in line, and the waiting list. It updates the UI elements based on the current state of the queue.
 function renderPatientBoard() {
+  const isWaitingRoom = document.body.classList.contains('waiting-room');
+
+  if (isWaitingRoom) {
+    renderWaitingRoomDisplay();
+  } else {
+    renderClassicPatientBoard();
+  }
+}
+
+function renderWaitingRoomDisplay() {
+  const currentServing = document.getElementById('current-serving');
+  const currentServingMessage = document.getElementById('current-serving-message');
+  const nextPatient = document.getElementById('next-patient');
+  const waitingList = document.getElementById('waiting-list');
+  const queueCount = document.getElementById('queue-count');
+  const followUpList = document.getElementById('followup-list');
+  const followUpSection = document.getElementById('followup-section');
+  const nowServingCard = document.querySelector('.now-serving-card');
+
+  const servingPatient = getCurrentServingPatient();
+  const nextPatientEntry = getWaitingPatients()[0] || null;
+  const followUpPatients = getFollowUpPatients();
+
+  // Toggle is-serving class on the card
+  if (nowServingCard) {
+    if (servingPatient) {
+      nowServingCard.classList.add('is-serving');
+    } else {
+      nowServingCard.classList.remove('is-serving');
+    }
+  }
+
+  // Render current serving
+  if (servingPatient) {
+    currentServing.innerHTML = `<span class="queue-number">#${servingPatient.queueNumber}</span><span class="patient-name">${escapeHtml(servingPatient.name)}</span>`;
+    currentServingMessage.textContent = 'Please proceed to the doctor';
+  } else if (state.patients.length > 0) {
+    currentServing.innerHTML = '<span class="queue-number">---</span><span class="patient-name">Waiting</span>';
+    currentServingMessage.textContent = 'Please wait for your turn';
+  } else {
+    currentServing.innerHTML = '<span class="queue-number">---</span><span class="patient-name">No patient</span>';
+    currentServingMessage.textContent = 'Waiting for the first patient';
+  }
+
+  // Render next patient
+  if (nextPatientEntry) {
+    nextPatient.innerHTML = `<span class="queue-number">#${nextPatientEntry.queueNumber}</span><span class="patient-name">${escapeHtml(nextPatientEntry.name)}</span>`;
+  } else {
+    nextPatient.innerHTML = '<span class="queue-number">---</span><span class="patient-name">No patient</span>';
+  }
+
+  // Render queue count
+  queueCount.textContent = `${getWaitingPatients().length} patients`;
+
+  // Render waiting list (queue numbers and names for waiting room)
+  if (getWaitingPatients().length === 0) {
+    waitingList.innerHTML = '<li class="empty">No patients currently waiting</li>';
+  } else {
+    waitingList.innerHTML = getWaitingPatients()
+      .map((patient) => `<li><span class="queue-number">#${patient.queueNumber}</span><span class="patient-name">${escapeHtml(patient.name)}</span></li>`)
+      .join('');
+  }
+
+  // Render follow-up patients
+  if (followUpSection && followUpList) {
+    if (followUpPatients.length === 0) {
+      followUpSection.hidden = true;
+      followUpList.innerHTML = '';
+    } else {
+      followUpSection.hidden = false;
+      followUpList.innerHTML = followUpPatients
+        .map((patient) => `<li><span class="queue-number">#${patient.queueNumber}</span><span class="patient-name">${escapeHtml(patient.name)}</span></li>`)
+        .join('');
+    }
+  }
+
+  // Initialize YouTube player for waiting room
+  initYouTubePlayer();
+}
+
+function renderClassicPatientBoard() {
   const currentServing = document.getElementById('current-serving');
   const currentServingHeading = document.getElementById('current-serving-heading');
   const currentServingName = document.getElementById('current-serving-name');
@@ -1370,8 +1460,57 @@ function render() {
     renderConsultationHistory();
   }
 
+  // Update dashboard stats if on admin page
+  if (document.body.classList.contains('admin-body')) {
+    updateDashboardStats();
+  }
+
   // Check for new patients on doctor page
   checkForNewPatients();
+}
+
+async function loadVideoConfigDisplay() {
+  try {
+    const response = await fetch('/backend/api_postgres.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'get-video-config' }),
+      cache: 'no-store'
+    });
+    const data = await response.json();
+
+    if (data?.success && data?.videoConfig) {
+      const config = data.videoConfig;
+      const statusText = document.getElementById('video-status-text');
+      const playlistUrlInput = document.getElementById('video-playlist-url');
+      const playlistTitleInput = document.getElementById('video-playlist-title');
+      const enabledSelect = document.getElementById('video-enabled');
+
+      if (statusText) {
+        if (config.isEnabled && config.playlistId) {
+          statusText.textContent = `Enabled - ${config.playlistTitle || 'Untitled'}`;
+          statusText.style.color = '#16a34a';
+        } else {
+          statusText.textContent = 'Disabled';
+          statusText.style.color = '#6b7280';
+        }
+      }
+
+      if (playlistUrlInput) {
+        playlistUrlInput.value = config.playlistUrl || '';
+      }
+
+      if (playlistTitleInput) {
+        playlistTitleInput.value = config.playlistTitle || '';
+      }
+
+      if (enabledSelect) {
+        enabledSelect.value = config.isEnabled ? 'true' : 'false';
+      }
+    }
+  } catch (error) {
+    console.error('Error loading video config display:', error);
+  }
 }
 
 function initAdminPage() {
@@ -1528,6 +1667,29 @@ function initAdminPage() {
       adminFollowupForm.reset();
     });
   }
+
+  // Video configuration form
+  const videoConfigForm = document.getElementById('video-config-form');
+  if (videoConfigForm) {
+    videoConfigForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const playlistUrl = document.getElementById('video-playlist-url')?.value || '';
+      const playlistTitle = document.getElementById('video-playlist-title')?.value || '';
+      const isEnabled = document.getElementById('video-enabled')?.value === 'true';
+
+      await postAction('save-video-config', {
+        playlistUrl,
+        playlistTitle,
+        isEnabled
+      });
+
+      // Refresh video config display
+      await loadVideoConfigDisplay();
+    });
+  }
+
+  // Load video config on page load
+  loadVideoConfigDisplay();
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
@@ -1727,6 +1889,8 @@ function initDoctorPage() {
 
 function updateLiveClock() {
   const liveClock = document.getElementById('live-clock');
+  const liveDate = document.getElementById('live-date');
+  
   if (!liveClock) {
     return;
   }
@@ -1737,6 +1901,12 @@ function updateLiveClock() {
   const seconds = String(now.getSeconds()).padStart(2, '0');
   const meridiem = now.getHours() >= 12 ? 'PM' : 'AM';
   liveClock.textContent = `${hours}:${minutes}:${seconds} ${meridiem}`;
+
+  // Update date if element exists (for waiting room)
+  if (liveDate) {
+    const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+    liveDate.textContent = now.toLocaleDateString('en-US', options);
+  }
 }
 
 function initAdminAuth() {
@@ -2182,3 +2352,134 @@ function initMessaging() {
     messageBtn.hidden = true;
   }
 }
+
+// YouTube Playlist Player for Waiting Room
+let youtubePlayer = null;
+
+function initYouTubePlayer() {
+  const videoConfig = state.videoConfig;
+
+  if (!videoConfig || !videoConfig.isEnabled || !videoConfig.playlistId) {
+    // Show placeholder if no playlist configured
+    const placeholder = document.getElementById('youtube-placeholder');
+    const playerDiv = document.getElementById('youtube-player');
+    if (placeholder) placeholder.hidden = false;
+    if (playerDiv) playerDiv.innerHTML = '';
+    return;
+  }
+
+  // Hide placeholder and initialize player
+  const placeholder = document.getElementById('youtube-placeholder');
+  if (placeholder) placeholder.hidden = true;
+
+  if (youtubePlayer) {
+    // Update existing player
+    youtubePlayer.loadPlaylist({
+      list: videoConfig.playlistId,
+      listType: 'playlist'
+    });
+  } else {
+    // Create new player
+    youtubePlayer = new YT.Player('youtube-player', {
+      height: '100%',
+      width: '100%',
+      playerVars: {
+        'list': videoConfig.playlistId,
+        'listType': 'playlist',
+        'autoplay': 1,
+        'controls': 1,
+        'rel': 0,
+        'modestbranding': 1,
+        'playsinline': 1
+      },
+      events: {
+        'onError': onPlayerError
+      }
+    });
+  }
+}
+
+function onPlayerError(event) {
+  console.error('YouTube player error:', event.data);
+  const placeholder = document.getElementById('youtube-placeholder');
+  const placeholderText = document.querySelector('.placeholder-text');
+  if (placeholder && placeholderText) {
+    placeholder.hidden = false;
+    placeholderText.textContent = 'Unable to load playlist. Please check the configuration.';
+  }
+}
+
+// Update YouTube player when video config changes
+function updateYouTubePlayer() {
+  if (document.body.classList.contains('waiting-room')) {
+    initYouTubePlayer();
+  }
+}
+
+// YouTube API callback
+function onYouTubeIframeAPIReady() {
+  if (document.body.classList.contains('waiting-room')) {
+    initYouTubePlayer();
+  }
+}
+
+// Admin Dashboard Navigation
+function initAdminNavigation() {
+  const navItems = document.querySelectorAll('.nav-item');
+  const pageSections = document.querySelectorAll('.page-section');
+
+  navItems.forEach(item => {
+    item.addEventListener('click', () => {
+      const targetPage = item.dataset.page;
+
+      // Update active nav item
+      navItems.forEach(nav => nav.classList.remove('active'));
+      item.classList.add('active');
+
+      // Show target page section
+      pageSections.forEach(section => {
+        section.classList.remove('active');
+        if (section.id === `page-${targetPage}`) {
+          section.classList.add('active');
+        }
+      });
+    });
+  });
+}
+
+// Update Dashboard Statistics
+function updateDashboardStats() {
+  const queueCount = getWaitingPatients().length;
+  const servingPatient = getCurrentServingPatient();
+  const followUpCount = getFollowUpPatients().length;
+  const completedToday = state.consultationHistory?.filter(entry => {
+    const today = new Date().toDateString();
+    return new Date(entry.finishedAt).toDateString() === today;
+  }).length || 0;
+
+  const statQueueCount = document.getElementById('stat-queue-count');
+  const statServing = document.getElementById('stat-serving');
+  const statCompleted = document.getElementById('stat-completed');
+  const statFollowup = document.getElementById('stat-followup');
+
+  if (statQueueCount) statQueueCount.textContent = queueCount;
+  if (statServing) statServing.textContent = servingPatient ? `#${servingPatient.queueNumber}` : '---';
+  if (statCompleted) statCompleted.textContent = completedToday;
+  if (statFollowup) statFollowup.textContent = followUpCount;
+}
+
+// Initialize admin navigation on page load
+document.addEventListener('DOMContentLoaded', () => {
+  if (document.body.classList.contains('admin-body')) {
+    initAdminNavigation();
+
+    // Connect logout button
+    const logoutBtn = document.getElementById('menu-logout');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async () => {
+        await logoutAdmin();
+        window.location.reload();
+      });
+    }
+  }
+});
