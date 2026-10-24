@@ -843,6 +843,14 @@ body {
   pointer-events: none;
 }
 
+.admin-body .site-credit {
+  left: 260px;
+  bottom: 12px;
+  font-size: 0.8rem;
+  z-index: 10;
+  pointer-events: none;
+}
+
 /* Doctor Notification Styles */
 .doctor-notification {
   position: fixed;
@@ -2091,12 +2099,18 @@ body.waiting-room {
 }
 
 /* Admin Dashboard Styles */
+html:has(body.admin-body),
+body.admin-body {
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
 body.admin-body {
   background: #F1F5FC;
   color: #16324F;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
   margin: 0;
   padding: 0;
 }
@@ -2105,31 +2119,26 @@ body.admin-body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 14px 24px;
   background: #173653;
   color: white;
   gap: 16px;
   flex-shrink: 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 40;
 }
 
-.header-info .eyebrow {
-  margin: 0 0 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 0.75rem;
-  opacity: 0.8;
-}
-
-.header-info h1 {
-  margin: 0;
-  font-size: 1.4rem;
-  font-weight: 700;
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .admin-layout {
   display: flex;
   flex: 1;
+  min-height: 0;
+  height: calc(100vh - 68px);
   overflow: hidden;
 }
 
@@ -2139,7 +2148,10 @@ body.admin-body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  overflow-y: auto;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  z-index: 30;
 }
 
 .admin-sidebar[hidden] {
@@ -2152,12 +2164,18 @@ body.admin-body {
   padding: 16px 0;
   gap: 4px;
   flex: 1;
+  overflow-y: auto;
 }
 
 .sidebar-footer {
   padding: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   margin-top: auto;
+  flex-shrink: 0;
+  background: #173653;
+  position: sticky;
+  bottom: 0;
+  z-index: 35;
 }
 
 .sidebar-logout-btn {
@@ -2234,8 +2252,11 @@ body.admin-body {
 
 .admin-main {
   flex: 1;
+  height: 100%;
+  min-height: 0;
   overflow-y: auto;
   padding: 24px;
+  padding-bottom: 72px;
   background: #F1F5FC;
 }
 
@@ -2543,31 +2564,51 @@ body.admin-body {
 
 /* Responsive Admin Design */
 @media (max-width: 1024px) {
+  html:has(body.admin-body),
+  body.admin-body {
+    height: auto;
+    max-height: none;
+    overflow-y: auto;
+  }
+
   .admin-layout {
     flex-direction: column;
+    height: auto;
+    overflow: visible;
   }
 
   .admin-sidebar {
     width: 100%;
-    max-height: none;
+    height: auto;
+    position: sticky;
+    top: 0;
+    z-index: 100;
     overflow-x: auto;
     flex-direction: row;
     align-items: center;
     justify-content: space-between;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .sidebar-nav {
     flex-direction: row;
     padding: 8px;
+    flex: 1;
+    overflow-x: auto;
   }
 
   .sidebar-footer {
-    padding: 8px;
+    padding: 8px 12px;
     border-top: none;
-    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    border-left: 1px solid rgba(255, 255, 255, 0.15);
     margin-top: 0;
     display: flex;
     align-items: center;
+    flex-shrink: 0;
+    position: sticky;
+    right: 0;
+    background: #173653;
+    z-index: 101;
   }
 
   .sidebar-logout-btn {
@@ -2575,6 +2616,12 @@ body.admin-body {
     white-space: nowrap;
     padding: 8px 14px;
   }
+
+  .admin-body .site-credit {
+    left: 0;
+    bottom: 8px;
+  }
+}
 
   .nav-item {
     padding: 8px 12px;
