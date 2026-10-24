@@ -643,6 +643,11 @@ try {
 
         case 'logout':
             unset($_SESSION['admin_authenticated']);
+            unset($_SESSION['user_id']);
+            unset($_SESSION['username']);
+            unset($_SESSION['full_name']);
+            unset($_SESSION['user_role']);
+            session_destroy();
             jsonResponse(['success' => true, 'message' => 'Logged out']);
             break;
 
@@ -676,6 +681,11 @@ try {
 
         case 'doctor-logout':
             unset($_SESSION['doctor_authenticated']);
+            unset($_SESSION['user_id']);
+            unset($_SESSION['username']);
+            unset($_SESSION['full_name']);
+            unset($_SESSION['user_role']);
+            session_destroy();
             jsonResponse(['success' => true, 'message' => 'Logged out']);
             break;
 

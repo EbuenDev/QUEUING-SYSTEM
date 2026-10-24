@@ -467,9 +467,144 @@ async function loginAdmin(username, password) {
   }
 }
 
+function getBackendApiUrl() {
+  const path = window.location.pathname;
+  const projectMatch = path.match(/^(\/[^\/]+)?\/public\//i);
+  if (projectMatch && projectMatch[1]) {
+    return `${projectMatch[1]}/backend/api_postgres.php`;
+  }
+  return '/backend/api_postgres.php';
+}
+
+function ensureLogoutModal() {
+  let modal = document.getElementById('logout-confirm-modal');
+  if (modal) {
+    return modal;
+  }
+
+  modal = document.createElement('div');
+  modal.id = 'logout-confirm-modal';
+  modal.className = 'modern-modal-overlay';
+  modal.hidden = true;
+  modal.setAttribute('aria-hidden', 'true');
+  modal.innerHTML = `
+    <div class="modern-modal-card" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
+      <div class="modern-modal-icon-wrapper">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+      </div>
+      <div class="modern-modal-content">
+        <h3 id="logout-modal-title">Confirm Logout</h3>
+        <p>Are you sure you want to end your session? You will need to enter your credentials to log in again.</p>
+      </div>
+      <div class="modern-modal-actions">
+        <button id="cancel-logout-btn" type="button" class="modal-btn modal-btn-cancel">
+          Cancel
+        </button>
+        <button id="confirm-logout-btn" type="button" class="modal-btn modal-btn-confirm">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span>Log Out</span>
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  return modal;
+}
+
+function openLogoutModal(onConfirm) {
+  const modal = ensureLogoutModal();
+  const cancelBtn = modal.querySelector('#cancel-logout-btn');
+  const confirmBtn = modal.querySelector('#confirm-logout-btn');
+
+  // Reset button states
+  if (confirmBtn) {
+    confirmBtn.disabled = false;
+    confirmBtn.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i><span>Log Out</span>';
+  }
+  if (cancelBtn) {
+    cancelBtn.disabled = false;
+  }
+
+  modal.hidden = false;
+  requestAnimationFrame(() => {
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+    if (cancelBtn) {
+      cancelBtn.focus();
+    }
+  });
+
+  const closeModal = () => {
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+      modal.hidden = true;
+    }, 250);
+    cleanup();
+  };
+
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeModal();
+    }
+  };
+
+  const handleBackdropClick = (e) => {
+    if (e.target === modal) {
+      closeModal();
+    }
+  };
+
+  const onCancelClick = (e) => {
+    e.preventDefault();
+    closeModal();
+  };
+
+  const onConfirmClick = async (e) => {
+    e.preventDefault();
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Logging out...</span>';
+    }
+    if (cancelBtn) {
+      cancelBtn.disabled = true;
+    }
+
+    if (typeof onConfirm === 'function') {
+      try {
+        await onConfirm();
+      } catch (err) {
+        console.error('Logout error:', err);
+        closeModal();
+      }
+    }
+  };
+
+  function cleanup() {
+    document.removeEventListener('keydown', handleKeydown);
+    modal.removeEventListener('click', handleBackdropClick);
+    if (cancelBtn) {
+      cancelBtn.removeEventListener('click', onCancelClick);
+    }
+    if (confirmBtn) {
+      confirmBtn.removeEventListener('click', onConfirmClick);
+    }
+  }
+
+  document.addEventListener('keydown', handleKeydown);
+  modal.addEventListener('click', handleBackdropClick);
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', onCancelClick, { once: true });
+  }
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', onConfirmClick, { once: true });
+  }
+}
+
 async function logoutAdmin() {
   try {
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = getBackendApiUrl();
     await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -477,9 +612,20 @@ async function logoutAdmin() {
       },
       body: JSON.stringify({ action: 'logout' }),
       cache: 'no-store',
+    }).catch(err => {
+      console.warn('Backend logout request failed, continuing local logout', err);
     });
   } catch (error) {
-    console.error('Unable to log out', error);
+    console.error('Unable to log out from server', error);
+  } finally {
+    setAdminAuthenticated(false);
+    setAdminView(false);
+    try {
+      sessionStorage.removeItem('queue-admin-auth');
+    } catch (e) {
+      console.warn('Unable to clear admin sessionStorage', e);
+    }
+    window.location.reload();
   }
 }
 
@@ -513,7 +659,7 @@ async function loginDoctor(username, password) {
 
 async function logoutDoctor() {
   try {
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = getBackendApiUrl();
     await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -521,9 +667,20 @@ async function logoutDoctor() {
       },
       body: JSON.stringify({ action: 'doctor-logout' }),
       cache: 'no-store',
+    }).catch(err => {
+      console.warn('Backend doctor logout failed, continuing local logout', err);
     });
   } catch (error) {
-    console.error('Unable to log out', error);
+    console.error('Unable to log out as doctor', error);
+  } finally {
+    setDoctorAuthenticated(false);
+    setDoctorView(false);
+    try {
+      sessionStorage.removeItem('queue-doctor-auth');
+    } catch (e) {
+      console.warn('Unable to clear doctor sessionStorage', e);
+    }
+    window.location.reload();
   }
 }
 
@@ -1990,14 +2147,11 @@ function initAdminAuth() {
   }
 
   if (logoutButton) {
-    logoutButton.addEventListener('click', () => {
-      logoutAdmin();
-      setAdminAuthenticated(false);
-      setAdminView(false);
-      showAdminLoginError('');
-      if (usernameInput) {
-        usernameInput.focus();
-      }
+    logoutButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      openLogoutModal(async () => {
+        await logoutAdmin();
+      });
     });
   }
 
@@ -2111,33 +2265,22 @@ function initHamburgerMenu() {
 
     // Menu logout button handler
     if (menuLogoutBtn) {
-      menuLogoutBtn.addEventListener('click', async () => {
-        if (isDoctorPage) {
-          await logoutDoctor();
-          setDoctorAuthenticated(false);
-          setDoctorView(false);
-          showDoctorLoginError('');
-          hideDoctorNotification();
-          setTimeout(() => {
-            const usernameInput = document.getElementById('doctor-username');
-            if (usernameInput) {
-              usernameInput.focus();
-            }
-          }, 100);
-        } else if (isAdminPage) {
-          await logoutAdmin();
-          setAdminAuthenticated(false);
-          setAdminView(false);
-          showAdminLoginError('');
-          setTimeout(() => {
-            const usernameInput = document.getElementById('admin-username');
-            if (usernameInput) {
-              usernameInput.focus();
-            }
-          }, 100);
-        }
-        hamburgerMenu.hidden = true;
-        hamburgerBtn.classList.remove('active');
+      menuLogoutBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        openLogoutModal(async () => {
+          if (isDoctorPage) {
+            await logoutDoctor();
+            hideDoctorNotification();
+          } else if (isAdminPage) {
+            await logoutAdmin();
+          }
+          if (hamburgerMenu) {
+            hamburgerMenu.hidden = true;
+          }
+          if (hamburgerBtn) {
+            hamburgerBtn.classList.remove('active');
+          }
+        });
       });
     }
   }
@@ -2683,12 +2826,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (document.body.classList.contains('admin-body')) {
     initAdminNavigation();
 
-    // Connect logout button
+    // Connect logout button with modern confirmation modal
     const logoutBtn = document.getElementById('menu-logout');
     if (logoutBtn) {
-      logoutBtn.addEventListener('click', async () => {
-        await logoutAdmin();
-        window.location.reload();
+      logoutBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        openLogoutModal(async () => {
+          await logoutAdmin();
+        });
       });
     }
   }

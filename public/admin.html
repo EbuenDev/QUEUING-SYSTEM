@@ -361,7 +361,29 @@
       </main>
     </div>
 
+    <!-- Modern Logout Confirmation Modal -->
+    <div id="logout-confirm-modal" class="modern-modal-overlay" hidden aria-hidden="true">
+      <div class="modern-modal-card" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
+        <div class="modern-modal-icon-wrapper">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i>
+        </div>
+        <div class="modern-modal-content">
+          <h3 id="logout-modal-title">Sign Out of Admin?</h3>
+          <p>Are you sure you want to end your session? You will need to enter your credentials again to access the admin panel.</p>
+        </div>
+        <div class="modern-modal-actions">
+          <button id="cancel-logout-btn" type="button" class="modal-btn modal-btn-cancel">
+            Cancel
+          </button>
+          <button id="confirm-logout-btn" type="button" class="modal-btn modal-btn-confirm">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span>Log Out</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
-    <script src="assets/app.js?v=4.3"></script>
+    <script src="assets/app.js?v=4.4"></script>
   </body>
 </html>
