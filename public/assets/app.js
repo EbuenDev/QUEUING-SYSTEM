@@ -185,6 +185,8 @@ function setAdminView(isAuthenticated) {
   const hamburgerBtn = document.getElementById('hamburger-menu-btn');
   const hamburgerMenu = document.getElementById('hamburger-menu');
   const messageBtn = document.getElementById('message-btn');
+  const adminSidebar = document.querySelector('.admin-sidebar');
+  const menuLogout = document.getElementById('menu-logout');
 
   if (loginCard) {
     loginCard.hidden = isAuthenticated;
@@ -194,8 +196,16 @@ function setAdminView(isAuthenticated) {
     adminPanel.hidden = !isAuthenticated;
   }
 
+  if (adminSidebar) {
+    adminSidebar.hidden = !isAuthenticated;
+  }
+
   if (logoutButton) {
     logoutButton.hidden = !isAuthenticated;
+  }
+
+  if (menuLogout) {
+    menuLogout.hidden = !isAuthenticated;
   }
 
   if (hamburgerBtn) {

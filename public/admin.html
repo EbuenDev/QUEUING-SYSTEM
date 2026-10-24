@@ -40,13 +40,12 @@
             </form>
           </div>
         </div>
-        <button id="menu-logout" class="logout-btn"><i class="fa-solid fa-right-from-bracket"></i> Logout</button>
       </div>
     </header>
 
     <div class="admin-layout">
       <!-- Left Sidebar -->
-      <aside class="admin-sidebar">
+      <aside class="admin-sidebar" hidden>
         <nav class="sidebar-nav">
           <button class="nav-item active" data-page="dashboard">
             <span class="nav-icon"><i class="fa-solid fa-chart-pie"></i></span>
@@ -73,6 +72,12 @@
             <span class="nav-label">Consultation History</span>
           </button>
         </nav>
+        <div class="sidebar-footer">
+          <button id="menu-logout" class="sidebar-logout-btn" type="button">
+            <span class="nav-icon"><i class="fa-solid fa-right-from-bracket"></i></span>
+            <span class="nav-label">Logout</span>
+          </button>
+        </div>
       </aside>
 
       <!-- Main Content Area -->
