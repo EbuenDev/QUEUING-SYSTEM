@@ -591,7 +591,7 @@ function showNotificationPopup(notification) {
     popup.id = 'notification-popup';
     popup.className = 'card edit-modal notification-popup';
     popup.innerHTML = `
-      <h3>🔔 New Notification</h3>
+      <h3><i class="fa-solid fa-bell"></i> New Notification</h3>
       <div id="notification-content"></div>
       <div class="toolbar">
         <button type="button" id="close-notification-btn" class="btn btn-secondary">Close</button>
@@ -2193,7 +2193,7 @@ function toggleSound() {
 
   const toggleSoundBtn = document.getElementById('toggle-sound-btn');
   if (toggleSoundBtn) {
-    toggleSoundBtn.textContent = soundEnabled ? '🔔' : '🔇';
+    toggleSoundBtn.innerHTML = soundEnabled ? '<i class="fa-solid fa-bell"></i>' : '<i class="fa-solid fa-bell-slash"></i>';
     toggleSoundBtn.title = soundEnabled ? 'Sound notifications enabled' : 'Sound notifications disabled';
   }
 }
@@ -2201,7 +2201,7 @@ function toggleSound() {
 function updateSoundButton() {
   const toggleSoundBtn = document.getElementById('toggle-sound-btn');
   if (toggleSoundBtn) {
-    toggleSoundBtn.textContent = soundEnabled ? '🔔' : '🔇';
+    toggleSoundBtn.innerHTML = soundEnabled ? '<i class="fa-solid fa-bell"></i>' : '<i class="fa-solid fa-bell-slash"></i>';
     toggleSoundBtn.title = soundEnabled ? 'Sound notifications enabled' : 'Sound notifications disabled';
   }
 }
