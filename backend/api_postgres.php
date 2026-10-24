@@ -43,8 +43,12 @@ $doctorUsername = $config['doctor_username'];
 $doctorPassword = $config['doctor_password'];
 
 // User management functions
-function authenticateUser(PDO $db, string $username, string $password): ?array {
+function authenticateUser(?PDO $db, string $username, string $password): ?array {
     try {
+        if ($db === null) {
+            return null;
+        }
+
         $stmt = $db->prepare("SELECT id, username, password_hash, full_name, role, is_active FROM users WHERE username = :username");
         $stmt->execute([':username' => $username]);
         $user = $stmt->fetch();
@@ -64,7 +68,7 @@ function authenticateUser(PDO $db, string $username, string $password): ?array {
     }
 }
 
-function isSuperAdminAuthenticated(PDO $db): bool {
+function isSuperAdminAuthenticated(?PDO $db): bool {
     if (empty($_SESSION['user_id']) || empty($_SESSION['user_role'])) {
         return false;
     }
@@ -110,8 +114,12 @@ function getDefaultState(): array {
     ];
 }
 
-function loadStateFromDatabase(PDO $db): array {
+function loadStateFromDatabase(?PDO $db): array {
     try {
+        if ($db === null) {
+            return getDefaultState();
+        }
+
         // Load patients
         $stmt = $db->prepare("SELECT id, name, phil_health_id as philHealthId, queue_number as queueNumber, 
                                     status, patient_status as patientStatus, patient_status as type, 
@@ -182,11 +190,16 @@ function loadStateFromDatabase(PDO $db): array {
     }
 }
 
-function savePatientToDatabase(PDO $db, array $patient): void {
+function savePatientToDatabase(?PDO $db, array $patient): void {
     try {
-        $stmt = $db->prepare("INSERT INTO patients (id, name, phil_health_id, queue_number, status, patient_status, phil_health_status, follow_up_status, follow_up_reason) 
+        if ($db === null) {
+            error_log('Database not available - cannot save patient');
+            return;
+        }
+
+        $stmt = $db->prepare("INSERT INTO patients (id, name, phil_health_id, queue_number, status, patient_status, phil_health_status, follow_up_status, follow_up_reason)
                              VALUES (:id, :name, :philHealthId, :queueNumber, :status, :patientStatus, :philHealthStatus, :followUpStatus, :followUpReason)
-                             ON CONFLICT (id) DO UPDATE 
+                             ON CONFLICT (id) DO UPDATE
                              SET name = EXCLUDED.name,
                                  phil_health_id = EXCLUDED.phil_health_id,
                                  queue_number = EXCLUDED.queue_number,
@@ -195,7 +208,7 @@ function savePatientToDatabase(PDO $db, array $patient): void {
                                  phil_health_status = EXCLUDED.phil_health_status,
                                  follow_up_status = EXCLUDED.follow_up_status,
                                  follow_up_reason = EXCLUDED.follow_up_reason");
-        
+
         $stmt->execute([
             ':id' => $patient['id'],
             ':name' => $patient['name'],
@@ -213,8 +226,13 @@ function savePatientToDatabase(PDO $db, array $patient): void {
     }
 }
 
-function deletePatientFromDatabase(PDO $db, string $id): void {
+function deletePatientFromDatabase(?PDO $db, string $id): void {
     try {
+        if ($db === null) {
+            error_log('Database not available - cannot delete patient');
+            return;
+        }
+
         $stmt = $db->prepare("DELETE FROM patients WHERE id = :id");
         $stmt->execute([':id' => $id]);
     } catch (PDOException $e) {
@@ -223,15 +241,20 @@ function deletePatientFromDatabase(PDO $db, string $id): void {
     }
 }
 
-function saveConsultationToDatabase(PDO $db, array $consultation): void {
+function saveConsultationToDatabase(?PDO $db, array $consultation): void {
     try {
-        $stmt = $db->prepare("INSERT INTO consultation_history 
-                             (id, name, queue_number, phil_health_id, patient_status, phil_health_status, icd_code, consultation_details, finished_at) 
+        if ($db === null) {
+            error_log('Database not available - cannot save consultation');
+            return;
+        }
+
+        $stmt = $db->prepare("INSERT INTO consultation_history
+                             (id, name, queue_number, phil_health_id, patient_status, phil_health_status, icd_code, consultation_details, finished_at)
                              VALUES (:id, :name, :queueNumber, :philHealthId, :patientStatus, :philHealthStatus, :icdCode, :consultationDetails, :finishedAt)
-                             ON CONFLICT (id) DO UPDATE 
+                             ON CONFLICT (id) DO UPDATE
                              SET icd_code = EXCLUDED.icd_code,
                                  consultation_details = EXCLUDED.consultation_details");
-        
+
         $stmt->execute([
             ':id' => $consultation['id'],
             ':name' => $consultation['name'],
@@ -249,8 +272,13 @@ function saveConsultationToDatabase(PDO $db, array $consultation): void {
     }
 }
 
-function updateQueueNumber(PDO $db, int $nextQueueNumber): void {
+function updateQueueNumber(?PDO $db, int $nextQueueNumber): void {
     try {
+        if ($db === null) {
+            error_log('Database not available - cannot update queue number');
+            return;
+        }
+
         $stmt = $db->prepare("UPDATE queue_management SET next_queue_number = :nextQueueNumber WHERE id = 1");
         $stmt->execute([':nextQueueNumber' => $nextQueueNumber]);
     } catch (PDOException $e) {
@@ -259,8 +287,12 @@ function updateQueueNumber(PDO $db, int $nextQueueNumber): void {
     }
 }
 
-function loadMessagesFromDatabase(PDO $db, string $userRole): array {
+function loadMessagesFromDatabase(?PDO $db, string $userRole): array {
     try {
+        if ($db === null) {
+            return [];
+        }
+
         $stmt = $db->prepare("SELECT id, sender_role, receiver_role, message, is_read, created_at
                              FROM messages
                              WHERE (sender_role = :userRole OR receiver_role = :userRole)
@@ -284,8 +316,13 @@ function loadMessagesFromDatabase(PDO $db, string $userRole): array {
     }
 }
 
-function saveMessageToDatabase(PDO $db, string $senderRole, string $receiverRole, string $message): void {
+function saveMessageToDatabase(?PDO $db, string $senderRole, string $receiverRole, string $message): void {
     try {
+        if ($db === null) {
+            error_log('Database not available - cannot save message');
+            return;
+        }
+
         $stmt = $db->prepare("INSERT INTO messages (sender_role, receiver_role, message, is_read)
                              VALUES (:senderRole, :receiverRole, :message, false)");
         $stmt->execute([
@@ -299,8 +336,12 @@ function saveMessageToDatabase(PDO $db, string $senderRole, string $receiverRole
     }
 }
 
-function markMessagesAsRead(PDO $db, string $userRole): void {
+function markMessagesAsRead(?PDO $db, string $userRole): void {
     try {
+        if ($db === null) {
+            return;
+        }
+
         $stmt = $db->prepare("UPDATE messages SET is_read = true
                              WHERE receiver_role = :userRole AND is_read = false");
         $stmt->execute([':userRole' => $userRole]);
@@ -309,8 +350,12 @@ function markMessagesAsRead(PDO $db, string $userRole): void {
     }
 }
 
-function getUnreadMessageCount(PDO $db, string $userRole): int {
+function getUnreadMessageCount(?PDO $db, string $userRole): int {
     try {
+        if ($db === null) {
+            return 0;
+        }
+
         $stmt = $db->prepare("SELECT COUNT(*) as count FROM messages
                              WHERE receiver_role = :userRole AND is_read = false");
         $stmt->execute([':userRole' => $userRole]);
@@ -322,8 +367,12 @@ function getUnreadMessageCount(PDO $db, string $userRole): int {
     }
 }
 
-function cleanupOldMessages(PDO $db): void {
+function cleanupOldMessages(?PDO $db): void {
     try {
+        if ($db === null) {
+            return;
+        }
+
         // Delete messages older than 24 hours
         $stmt = $db->prepare("DELETE FROM messages
                              WHERE created_at < NOW() - INTERVAL '24 hours'");
@@ -334,8 +383,20 @@ function cleanupOldMessages(PDO $db): void {
     }
 }
 
-function loadVideoConfig(PDO $db): array {
+function loadVideoConfig(?PDO $db): array {
     try {
+        if ($db === null) {
+            return [
+                'id' => 1,
+                'playlistId' => '',
+                'playlistTitle' => '',
+                'playlistUrl' => '',
+                'isEnabled' => false,
+                'updatedAt' => null,
+                'updatedBy' => null
+            ];
+        }
+
         $stmt = $db->prepare("SELECT id, playlist_id, playlist_title, playlist_url, is_enabled, updated_at, updated_by
                              FROM video_config
                              WHERE id = 1");
@@ -377,8 +438,13 @@ function loadVideoConfig(PDO $db): array {
     }
 }
 
-function saveVideoConfig(PDO $db, array $config): void {
+function saveVideoConfig(?PDO $db, array $config): void {
     try {
+        if ($db === null) {
+            error_log('Database not available - cannot save video config');
+            return;
+        }
+
         $stmt = $db->prepare("INSERT INTO video_config (id, playlist_id, playlist_title, playlist_url, is_enabled, updated_by)
                              VALUES (1, :playlistId, :playlistTitle, :playlistUrl, :isEnabled, :updatedBy)
                              ON CONFLICT (id) DO UPDATE
@@ -416,12 +482,17 @@ function extractYoutubePlaylistId(string $url): ?string {
     return null;
 }
 
-function createNotification(PDO $db, array $notification): void {
+function createNotification(?PDO $db, array $notification): void {
     try {
+        if ($db === null) {
+            error_log('Database not available - cannot create notification');
+            return;
+        }
+
         error_log('Creating notification: ' . json_encode($notification));
-        $stmt = $db->prepare("INSERT INTO notifications (queue_number, patient_name, message, notification_type, is_read) 
+        $stmt = $db->prepare("INSERT INTO notifications (queue_number, patient_name, message, notification_type, is_read)
                              VALUES (:queueNumber, :patientName, :message, :notificationType, :isRead)");
-        
+
         $stmt->execute([
             ':queueNumber' => $notification['queueNumber'] ?? null,
             ':patientName' => $notification['patientName'] ?? '',
@@ -436,11 +507,15 @@ function createNotification(PDO $db, array $notification): void {
     }
 }
 
-function getUnreadNotifications(PDO $db, int $lastNotificationId = 0): array {
+function getUnreadNotifications(?PDO $db, int $lastNotificationId = 0): array {
     try {
-        $stmt = $db->prepare("SELECT id, queue_number, patient_name, message, notification_type, created_at 
-                             FROM notifications 
-                             WHERE id > :lastNotificationId AND is_read = false 
+        if ($db === null) {
+            return [];
+        }
+
+        $stmt = $db->prepare("SELECT id, queue_number, patient_name, message, notification_type, created_at
+                             FROM notifications
+                             WHERE id > :lastNotificationId AND is_read = false
                              ORDER BY id ASC");
         $stmt->execute([':lastNotificationId' => $lastNotificationId]);
         return $stmt->fetchAll();
@@ -450,9 +525,9 @@ function getUnreadNotifications(PDO $db, int $lastNotificationId = 0): array {
     }
 }
 
-function markNotificationsAsRead(PDO $db, array $notificationIds): void {
+function markNotificationsAsRead(?PDO $db, array $notificationIds): void {
     try {
-        if (empty($notificationIds)) {
+        if (empty($notificationIds) || $db === null) {
             return;
         }
         $placeholders = implode(',', array_fill(0, count($notificationIds), '?'));
@@ -470,11 +545,12 @@ function jsonResponse(array $payload, int $status = 200): void {
 
 
 
+$db = null;
 try {
     $db = Database::getInstance()->getConnection();
 } catch (Exception $e) {
-    jsonResponse(['success' => false, 'message' => 'Database connection failed'], 500);
-    exit;
+    // Database connection failed - will use config-based authentication as fallback
+    error_log('Database connection failed: ' . $e->getMessage());
 }
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
