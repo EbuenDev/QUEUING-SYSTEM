@@ -301,7 +301,7 @@ function ensureMessagesTable(?PDO $db): void {
     } catch (Exception $e) {}
 }
 
-function loadMessagesFromDatabase(?PDO $db, string $userRole): array {
+function loadMessagesFromDatabase(?PDO $db, string $userRole, int $lastId = 0): array {
     try {
         if ($db === null) {
             return [];
@@ -309,16 +309,35 @@ function loadMessagesFromDatabase(?PDO $db, string $userRole): array {
 
         ensureMessagesTable($db);
 
-        $stmt = $db->prepare("SELECT id, sender_role, receiver_role, message, is_read, created_at
-                             FROM messages
-                             WHERE (sender_role = :userRole OR receiver_role = :userRole)
-                             ORDER BY created_at ASC");
-        $stmt->execute([':userRole' => $userRole]);
-        $messages = $stmt->fetchAll();
+        if ($lastId > 0) {
+            $stmt = $db->prepare("SELECT id, sender_role, receiver_role, message, is_read, created_at
+                                 FROM messages
+                                 WHERE (sender_role = :userRole OR receiver_role = :userRole)
+                                   AND id > :lastId
+                                 ORDER BY id ASC");
+            $stmt->execute([
+                ':userRole' => $userRole,
+                ':lastId' => $lastId
+            ]);
+            $messages = $stmt->fetchAll();
+        } else {
+            // Fetch recent 100 messages chronologically
+            $stmt = $db->prepare("SELECT id, sender_role, receiver_role, message, is_read, created_at
+                                 FROM (
+                                     SELECT id, sender_role, receiver_role, message, is_read, created_at
+                                     FROM messages
+                                     WHERE (sender_role = :userRole OR receiver_role = :userRole)
+                                     ORDER BY id DESC
+                                     LIMIT 100
+                                 ) sub
+                                 ORDER BY id ASC");
+            $stmt->execute([':userRole' => $userRole]);
+            $messages = $stmt->fetchAll();
+        }
 
         return array_map(function($message) {
             return [
-                'id' => $message['id'],
+                'id' => (int)$message['id'],
                 'senderRole' => $message['sender_role'],
                 'receiverRole' => $message['receiver_role'],
                 'message' => $message['message'],
@@ -332,37 +351,73 @@ function loadMessagesFromDatabase(?PDO $db, string $userRole): array {
     }
 }
 
-function saveMessageToDatabase(?PDO $db, string $senderRole, string $receiverRole, string $message): void {
+function saveMessageToDatabase(?PDO $db, string $senderRole, string $receiverRole, string $message): array {
     try {
         if ($db === null) {
             error_log('Database not available - cannot save message');
-            return;
+            throw new Exception('Database unavailable');
         }
 
-        $stmt = $db->prepare("INSERT INTO messages (sender_role, receiver_role, message, is_read)
-                             VALUES (:senderRole, :receiverRole, :message, false)");
+        ensureMessagesTable($db);
+
+        $stmt = $db->prepare("INSERT INTO messages (sender_role, receiver_role, message, is_read, created_at)
+                             VALUES (:senderRole, :receiverRole, :message, false, CURRENT_TIMESTAMP)
+                             RETURNING id, sender_role, receiver_role, message, is_read, created_at");
         $stmt->execute([
             ':senderRole' => $senderRole,
             ':receiverRole' => $receiverRole,
             ':message' => $message
         ]);
+        $saved = $stmt->fetch();
+        if ($saved) {
+            return [
+                'id' => (int)$saved['id'],
+                'senderRole' => $saved['sender_role'],
+                'receiverRole' => $saved['receiver_role'],
+                'message' => $saved['message'],
+                'isRead' => (bool)$saved['is_read'],
+                'createdAt' => $saved['created_at']
+            ];
+        }
+        return [];
     } catch (PDOException $e) {
         error_log('Error saving message to database: ' . $e->getMessage());
         throw $e;
     }
 }
 
-function markMessagesAsRead(?PDO $db, string $userRole): void {
+function markMessagesAsRead(?PDO $db, string $userRole): array {
     try {
         if ($db === null) {
-            return;
+            return [];
         }
 
         $stmt = $db->prepare("UPDATE messages SET is_read = true
-                             WHERE receiver_role = :userRole AND is_read = false");
+                             WHERE receiver_role = :userRole AND is_read = false
+                             RETURNING id");
         $stmt->execute([':userRole' => $userRole]);
+        $rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        return array_map('intval', $rows ?: []);
     } catch (PDOException $e) {
         error_log('Error marking messages as read: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function getMaxReadMessageId(?PDO $db, string $senderRole): int {
+    try {
+        if ($db === null) {
+            return 0;
+        }
+
+        $stmt = $db->prepare("SELECT COALESCE(MAX(id), 0) as max_id FROM messages
+                             WHERE sender_role = :senderRole AND is_read = true");
+        $stmt->execute([':senderRole' => $senderRole]);
+        $result = $stmt->fetch();
+        return (int)($result['max_id'] ?? 0);
+    } catch (PDOException $e) {
+        error_log('Error getting max read message id: ' . $e->getMessage());
+        return 0;
     }
 }
 
@@ -754,7 +809,7 @@ if (!is_array($payload)) {
 
 $action = $payload['action'] ?? '';
 $requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
-$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read', 'send-message', 'mark-messages-read', 'cleanup-messages'], true);
+$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read', 'send-message', 'poll-messages', 'mark-messages-read', 'cleanup-messages'], true);
 $requiresSuperAdminAuth = in_array($action, ['create-user', 'list-users', 'update-user', 'delete-user'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
@@ -1453,11 +1508,39 @@ try {
             }
 
             try {
-                saveMessageToDatabase($db, $senderRole, $receiverRole, $message);
-                jsonResponse(['success' => true, 'message' => 'Message sent successfully']);
+                $savedMessage = saveMessageToDatabase($db, $senderRole, $receiverRole, $message);
+                jsonResponse([
+                    'success' => true,
+                    'message' => 'Message sent successfully',
+                    'data' => $savedMessage
+                ]);
             } catch (Exception $e) {
-                jsonResponse(['success' => false, 'message' => 'Failed to send message'], 500);
+                jsonResponse(['success' => false, 'message' => 'Failed to send message: ' . $e->getMessage()], 500);
             }
+            break;
+
+        case 'poll-messages':
+            $userRole = '';
+            if (isAdminAuthenticated()) {
+                $userRole = 'admin';
+            } elseif (isDoctorAuthenticated()) {
+                $userRole = 'doctor';
+            } else {
+                jsonResponse(['success' => false, 'message' => 'Authentication required'], 401);
+                exit;
+            }
+
+            $lastId = isset($payload['lastId']) ? (int)$payload['lastId'] : 0;
+            $newMessages = loadMessagesFromDatabase($db, $userRole, $lastId);
+            $unreadCount = getUnreadMessageCount($db, $userRole);
+            $maxReadId = getMaxReadMessageId($db, $userRole);
+
+            jsonResponse([
+                'success' => true,
+                'messages' => $newMessages,
+                'unreadCount' => $unreadCount,
+                'maxReadId' => $maxReadId
+            ]);
             break;
 
         case 'mark-messages-read':
@@ -1472,8 +1555,12 @@ try {
                 exit;
             }
 
-            markMessagesAsRead($db, $userRole);
-            jsonResponse(['success' => true, 'message' => 'Messages marked as read']);
+            $readIds = markMessagesAsRead($db, $userRole);
+            jsonResponse([
+                'success' => true,
+                'message' => 'Messages marked as read',
+                'readIds' => $readIds
+            ]);
             break;
 
         case 'cleanup-messages':

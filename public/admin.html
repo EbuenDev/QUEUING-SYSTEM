@@ -22,21 +22,58 @@
       </div>
       <div class="header-right">
         <div class="message-container">
-          <button id="message-btn" class="message-btn" type="button" aria-label="Messages">
+          <button id="message-btn" class="message-btn" type="button" aria-label="Messages" title="Direct Doctor & Admin Messaging">
             <span class="message-icon"><i class="fa-solid fa-comments"></i></span>
             <span id="message-badge" class="message-badge" hidden>0</span>
           </button>
-          <div id="message-popup" class="message-popup" hidden>
+          <div id="message-popup" class="message-popup" hidden role="dialog" aria-label="Direct Chat">
             <div class="message-popup-header">
-              <h3>Messages</h3>
-              <button id="toggle-sound-btn" class="cleanup-btn" type="button" title="Toggle sound notifications"><i class="fa-solid fa-bell"></i></button>
-              <button id="cleanup-messages-btn" class="cleanup-btn" type="button" title="Delete messages older than 24 hours"><i class="fa-solid fa-trash-can"></i></button>
-              <button id="close-message-popup" class="close-popup-btn" type="button"><i class="fa-solid fa-xmark"></i></button>
+              <div class="message-header-user">
+                <div class="message-avatar">
+                  <i id="message-partner-icon" class="fa-solid fa-user-doctor"></i>
+                  <span class="status-indicator-dot online" title="Online"></span>
+                </div>
+                <div class="message-user-details">
+                  <h3 id="message-partner-title">Doc. Renz Sale</h3>
+                  <span id="message-partner-status" class="message-substatus">Online</span>
+                </div>
+              </div>
+              <div class="message-header-actions">
+                <button id="toggle-sound-btn" class="chat-tool-btn" type="button" title="Sound notifications"><i class="fa-solid fa-bell"></i></button>
+                <button id="cleanup-messages-btn" class="chat-tool-btn danger" type="button" title="Delete messages older than 24 hours"><i class="fa-solid fa-trash-can"></i></button>
+                <button id="close-message-popup" class="chat-tool-btn close-btn" type="button" title="Close"><i class="fa-solid fa-xmark"></i></button>
+              </div>
             </div>
-            <div id="message-list" class="message-list"></div>
+
+            <!-- Quick clinic reply chips -->
+            <div id="message-quick-replies" class="message-quick-replies" aria-label="Quick replies"></div>
+
+            <!-- Message list wrapper with floating scroll-to-bottom button -->
+            <div class="message-list-wrapper">
+              <div id="message-list" class="message-list"></div>
+              <button id="message-scroll-bottom-btn" class="message-scroll-bottom-btn" type="button" hidden>
+                <i class="fa-solid fa-arrow-down"></i>
+                <span>New messages</span>
+              </button>
+            </div>
+
+            <!-- Typing indicator -->
+            <div id="message-typing-indicator" class="message-typing-indicator" hidden>
+              <div class="typing-bubble">
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+              </div>
+              <span id="typing-text" class="typing-label">Typing...</span>
+            </div>
+
             <form id="message-form" class="message-form" method="post" action="">
-              <input id="message-input" type="text" placeholder="Type a message..." required />
-              <button type="submit" class="btn btn-primary">Send</button>
+              <div class="message-input-wrapper">
+                <input id="message-input" type="text" placeholder="Type a message..." maxlength="1000" autocomplete="off" required />
+              </div>
+              <button type="submit" id="message-send-btn" class="message-send-btn" title="Send message" aria-label="Send message">
+                <i class="fa-solid fa-paper-plane"></i>
+              </button>
             </form>
           </div>
         </div>

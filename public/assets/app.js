@@ -429,46 +429,15 @@ function initRealtimeSync() {
     }
   }, 1000);
 
-  // Set up faster polling for messages (real-time)
+  // Scheduled polling for background message notifications (when popup is closed)
   setInterval(() => {
     if (!document.hidden && (isAdminAuthenticated() || isDoctorAuthenticated())) {
-      pollMessages();
-    }
-  }, 1000);
-}
-
-async function pollMessages() {
-  try {
-    const apiUrl = getBackendApiUrl();
-    const response = await fetch(apiUrl, { cache: 'no-store' });
-    const data = await response.json();
-    if (data?.success) {
-      const oldUnreadCount = state.unreadCount;
-      const oldMessagesLength = state.messages.length;
-
-      state.messages = data.messages || [];
-      state.unreadCount = data.unreadCount || 0;
-
-      // Update badge if count changed
-      if (oldUnreadCount !== state.unreadCount) {
-        updateMessageBadge();
-      }
-
-      // If popup is open or new messages arrived, re-render messages
-      const messagePopup = document.getElementById('message-popup');
-      if (messagePopup && !messagePopup.hidden) {
-        // Force scroll to bottom if new messages arrived
-        const hasNewMessages = state.messages.length > oldMessagesLength;
-        renderMessages(hasNewMessages);
-      } else if (state.messages.length > oldMessagesLength) {
-        // New message arrived but popup is closed - update badge and play sound
-        updateMessageBadge();
-        playMessageNotificationSound();
+      const popup = document.getElementById('message-popup');
+      if (!popup || popup.hidden) {
+        pollMessages();
       }
     }
-  } catch (error) {
-    console.error('Unable to poll messages', error);
-  }
+  }, 1500);
 }
 
 //This function fetches the current state of the queue from the backend API and updates the local state accordingly. It also handles any errors that may occur during the fetch operation.
@@ -479,8 +448,7 @@ async function fetchState() {
     const data = await response.json();
     if (data?.success && data.state) {
       state = data.state;
-      state.messages = data.messages || [];
-      state.unreadCount = data.unreadCount || 0;
+      syncMessagesFromBackend(data.messages || [], data.unreadCount || 0);
       render();
       checkForNewPatients();
       updateMessageBadge();
@@ -2997,33 +2965,213 @@ document.addEventListener('DOMContentLoaded', () => {
 
 });
 
-// Messaging functions
+// ============================================================================
+// Modern Responsive Real-time Messaging (Doctor <-> Admin Direct Chat)
+// ============================================================================
+let chatBroadcastChannel = null;
+let lastMessageId = 0;
+let maxReadReceiptId = 0;
 let soundEnabled = localStorage.getItem('messageSoundEnabled') !== 'false'; // Default to true
+let isPollingMessages = false;
+let partnerTypingTimeout = null;
+let lastTypingBroadcastTime = 0;
+let messagePollInterval = null;
 
+function getCurrentUserRole() {
+  if (isAdminAuthenticated()) return 'admin';
+  if (isDoctorAuthenticated()) return 'doctor';
+  return '';
+}
+
+function getChatPartnerRole() {
+  const role = getCurrentUserRole();
+  if (role === 'admin') return 'doctor';
+  if (role === 'doctor') return 'admin';
+  return '';
+}
+
+function getRoleDisplayName(role) {
+  if (role === 'doctor') return 'Doc. Renz Sale';
+  if (role === 'admin') return 'Admin Desk';
+  return role ? role.toUpperCase() : 'Staff';
+}
+
+// Pleasant chime for new messages using Web Audio API + audio file fallback
 function playMessageNotificationSound() {
-  if (!soundEnabled) {
-    return;
-  }
+  if (!soundEnabled) return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      // High-pitched gentle clinic bell (F5 -> A5)
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(698.46, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
+
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.45);
+      return;
+    }
+  } catch (e) {}
 
   try {
     const audio = new Audio('/assets/sounds/sound-9.mp3');
-    audio.volume = 0.5; // Set volume to 50%
-    audio.play().catch(error => {
-      console.log('Could not play notification sound:', error);
-    });
-  } catch (error) {
-    console.log('Error playing notification sound:', error);
+    audio.volume = 0.4;
+    audio.play().catch(() => {});
+  } catch (e) {}
+}
+
+// Gentle tactile pop when user sends a message
+function playSentMessageSound() {
+  if (!soundEnabled) return;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(400, now);
+      osc.frequency.exponentialRampToValueAtTime(260, now + 0.05);
+
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.05);
+    }
+  } catch (e) {}
+}
+
+function showDesktopNotification(senderTitle, messageText) {
+  if (!document.hidden) return;
+  if (!('Notification' in window)) return;
+
+  if (Notification.permission === 'granted') {
+    try {
+      const notification = new Notification(`RHU II Chat: ${senderTitle}`, {
+        body: messageText,
+        icon: '/assets/logo.png',
+        tag: 'rhu-chat-msg'
+      });
+      notification.onclick = () => {
+        window.focus();
+        const popup = document.getElementById('message-popup');
+        if (popup && popup.hidden) {
+          toggleMessagePopup();
+        }
+      };
+    } catch (e) {}
   }
+}
+
+function broadcastChatEvent(payload) {
+  const data = { ...payload, timestamp: Date.now() };
+  if (chatBroadcastChannel) {
+    try {
+      chatBroadcastChannel.postMessage(data);
+    } catch (e) {
+      console.warn('BroadcastChannel error:', e);
+    }
+  }
+  try {
+    localStorage.setItem('queue-chat-event', JSON.stringify(data));
+    localStorage.setItem('queue-chat-ts', String(data.timestamp));
+  } catch (e) {}
+}
+
+function handleIncomingChatEvent(data) {
+  if (!data || !data.type) return;
+
+  if (data.type === 'new-message' && data.message) {
+    const msg = data.message;
+    const userRole = getCurrentUserRole();
+    if (!userRole) return;
+
+    if (!Array.isArray(state.messages)) state.messages = [];
+    const exists = state.messages.some(m => m.id === msg.id || (m.tempId && m.message === msg.message && m.senderRole === msg.senderRole));
+
+    if (!exists) {
+      state.messages.push(msg);
+      if (msg.id > lastMessageId) lastMessageId = msg.id;
+
+      appendMessageToDom(msg);
+
+      if (msg.senderRole !== userRole) {
+        const popup = document.getElementById('message-popup');
+        if (popup && !popup.hidden) {
+          markMessagesAsRead();
+        } else {
+          state.unreadCount = (state.unreadCount || 0) + 1;
+          updateMessageBadge();
+          playMessageNotificationSound();
+          showDesktopNotification(getRoleDisplayName(msg.senderRole), msg.message);
+        }
+      }
+      smartScrollToBottom();
+    }
+  } else if (data.type === 'messages-read') {
+    const userRole = getCurrentUserRole();
+    if (data.readerRole && data.readerRole !== userRole) {
+      markDomSentMessagesAsRead(data.maxId || 0);
+    }
+  } else if (data.type === 'typing') {
+    const userRole = getCurrentUserRole();
+    if (data.senderRole && data.senderRole !== userRole) {
+      showTypingIndicator(getRoleDisplayName(data.senderRole));
+    }
+  } else if (data.type === 'cleanup') {
+    state.messages = [];
+    state.unreadCount = 0;
+    lastMessageId = 0;
+    renderAllMessages(true);
+    updateMessageBadge();
+  }
+}
+
+function initChatSync() {
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      chatBroadcastChannel = new BroadcastChannel('queue-chat-channel');
+      chatBroadcastChannel.addEventListener('message', (event) => {
+        handleIncomingChatEvent(event.data);
+      });
+    } catch (e) {
+      console.warn('BroadcastChannel init error:', e);
+    }
+  }
+
+  window.addEventListener('storage', (event) => {
+    if (event.key === 'queue-chat-event' && event.newValue) {
+      try {
+        const payload = JSON.parse(event.newValue);
+        handleIncomingChatEvent(payload);
+      } catch (e) {}
+    }
+  });
 }
 
 function toggleSound() {
   soundEnabled = !soundEnabled;
   localStorage.setItem('messageSoundEnabled', soundEnabled.toString());
-
-  const toggleSoundBtn = document.getElementById('toggle-sound-btn');
-  if (toggleSoundBtn) {
-    toggleSoundBtn.innerHTML = soundEnabled ? '<i class="fa-solid fa-bell"></i>' : '<i class="fa-solid fa-bell-slash"></i>';
-    toggleSoundBtn.title = soundEnabled ? 'Sound notifications enabled' : 'Sound notifications disabled';
+  updateSoundButton();
+  if (soundEnabled) {
+    playMessageNotificationSound();
   }
 }
 
@@ -3031,15 +3179,17 @@ function updateSoundButton() {
   const toggleSoundBtn = document.getElementById('toggle-sound-btn');
   if (toggleSoundBtn) {
     toggleSoundBtn.innerHTML = soundEnabled ? '<i class="fa-solid fa-bell"></i>' : '<i class="fa-solid fa-bell-slash"></i>';
-    toggleSoundBtn.title = soundEnabled ? 'Sound notifications enabled' : 'Sound notifications disabled';
+    toggleSoundBtn.title = soundEnabled ? 'Notification sound enabled (click to mute)' : 'Notification sound muted (click to enable)';
+    toggleSoundBtn.classList.toggle('muted', !soundEnabled);
   }
 }
 
 function updateMessageBadge() {
   const messageBadge = document.getElementById('message-badge');
   if (messageBadge) {
-    if (state.unreadCount > 0) {
-      messageBadge.textContent = state.unreadCount > 9 ? '9+' : state.unreadCount;
+    const count = Number(state.unreadCount) || 0;
+    if (count > 0) {
+      messageBadge.textContent = count > 9 ? '9+' : String(count);
       messageBadge.hidden = false;
     } else {
       messageBadge.hidden = true;
@@ -3047,21 +3197,512 @@ function updateMessageBadge() {
   }
 }
 
-function toggleMessagePopup() {
-  const messagePopup = document.getElementById('message-popup');
-  if (messagePopup) {
-    const isHidden = messagePopup.hidden;
-    messagePopup.hidden = !isHidden;
+function updateChatHeaderInfo() {
+  const userRole = getCurrentUserRole();
+  const titleEl = document.getElementById('message-partner-title');
+  const iconEl = document.getElementById('message-partner-icon');
+  const statusEl = document.getElementById('message-partner-status');
 
-    if (!isHidden) {
-      // Opening the popup - scroll to bottom
-      renderMessages(true);
-      updateSoundButton();
-      // Mark messages as read after a short delay
-      setTimeout(() => {
-        postAction('mark-messages-read');
-      }, 500);
+  if (userRole === 'doctor') {
+    if (titleEl) titleEl.textContent = 'Admin Desk';
+    if (iconEl) iconEl.className = 'fa-solid fa-shield-halved';
+    if (statusEl) statusEl.textContent = 'Online & Ready';
+  } else if (userRole === 'admin') {
+    if (titleEl) titleEl.textContent = 'Doc. Renz Sale';
+    if (iconEl) iconEl.className = 'fa-solid fa-user-doctor';
+    if (statusEl) statusEl.textContent = 'Consultation Room';
+  }
+}
+
+function setupQuickReplies() {
+  const quickContainer = document.getElementById('message-quick-replies');
+  if (!quickContainer) return;
+
+  const userRole = getCurrentUserRole();
+  let replies = [];
+
+  if (userRole === 'doctor') {
+    replies = [
+      { text: 'Next patient please', icon: 'fa-user-check' },
+      { text: 'Needs laboratory test', icon: 'fa-flask-vial' },
+      { text: 'Send patient to pharmacy', icon: 'fa-prescription-bottle-medical' },
+      { text: 'Taking a 5-min break', icon: 'fa-mug-hot' },
+      { text: 'Ready for consult', icon: 'fa-stethoscope' }
+    ];
+  } else if (userRole === 'admin') {
+    replies = [
+      { text: 'Next patient is ready', icon: 'fa-user-clock' },
+      { text: 'Urgent / Priority patient', icon: 'fa-triangle-exclamation' },
+      { text: 'Patient stepped out briefly', icon: 'fa-person-walking-arrow-right' },
+      { text: 'Chart & vitals updated', icon: 'fa-clipboard-check' },
+      { text: 'Noted, doctor', icon: 'fa-thumbs-up' }
+    ];
+  }
+
+  quickContainer.innerHTML = replies.map(r => `
+    <button type="button" class="quick-chip" data-text="${escapeHtml(r.text)}">
+      <i class="fa-solid ${r.icon}"></i>
+      <span>${escapeHtml(r.text)}</span>
+    </button>
+  `).join('');
+
+  quickContainer.querySelectorAll('.quick-chip').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = btn.getAttribute('data-text');
+      if (text) {
+        await sendMessage(text);
+      }
+    });
+  });
+}
+
+function showTypingIndicator(senderName) {
+  const indicator = document.getElementById('message-typing-indicator');
+  const label = document.getElementById('typing-text');
+  if (!indicator || !label) return;
+
+  label.textContent = `${senderName} is typing...`;
+  indicator.hidden = false;
+
+  if (partnerTypingTimeout) {
+    clearTimeout(partnerTypingTimeout);
+  }
+
+  partnerTypingTimeout = setTimeout(() => {
+    indicator.hidden = true;
+  }, 2800);
+}
+
+function handleTypingInput() {
+  const now = Date.now();
+  if (now - lastTypingBroadcastTime > 1500) {
+    lastTypingBroadcastTime = now;
+    broadcastChatEvent({
+      type: 'typing',
+      senderRole: getCurrentUserRole()
+    });
+  }
+}
+
+function getChatDateLabel(dateString) {
+  try {
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return 'Today';
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (d.toDateString() === today.toDateString()) {
+      return 'Today';
     }
+    if (d.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    }
+    return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch (e) {
+    return 'Today';
+  }
+}
+
+function formatMessageTime(dateString) {
+  try {
+    const d = new Date(dateString);
+    return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch (e) {
+    return '';
+  }
+}
+
+function markDomSentMessagesAsRead(maxId) {
+  const messageList = document.getElementById('message-list');
+  if (!messageList) return;
+
+  const sentItems = messageList.querySelectorAll('.message-item.sent');
+  sentItems.forEach(item => {
+    const id = Number(item.getAttribute('data-id')) || 0;
+    if (!maxId || id <= maxId) {
+      const statusSpan = item.querySelector('.msg-status');
+      if (statusSpan) {
+        statusSpan.className = 'msg-status read';
+        statusSpan.innerHTML = '<i class="fa-solid fa-check-double" title="Read"></i>';
+      }
+    }
+  });
+}
+
+function smartScrollToBottom(force = false) {
+  const messageList = document.getElementById('message-list');
+  const scrollBtn = document.getElementById('message-scroll-bottom-btn');
+  if (!messageList) return;
+
+  const isAtBottom = messageList.scrollHeight - messageList.scrollTop <= messageList.clientHeight + 65;
+
+  if (force || isAtBottom) {
+    messageList.scrollTo({ top: messageList.scrollHeight, behavior: 'smooth' });
+    if (scrollBtn) scrollBtn.hidden = true;
+  } else {
+    if (scrollBtn) scrollBtn.hidden = false;
+  }
+}
+
+function renderAllMessages(forceScrollToBottom = false) {
+  const messageList = document.getElementById('message-list');
+  if (!messageList) return;
+
+  if (!state.messages || state.messages.length === 0) {
+    messageList.innerHTML = `
+      <div class="message-empty-state">
+        <i class="fa-solid fa-comments"></i>
+        <strong>No messages yet</strong>
+        <p>Send a message or select a quick reply below to communicate directly between Doctor and Admin.</p>
+      </div>
+    `;
+    return;
+  }
+
+  const userRole = getCurrentUserRole();
+  let lastDate = '';
+  let html = '';
+
+  state.messages.forEach(msg => {
+    const dateLabel = getChatDateLabel(msg.createdAt);
+    if (dateLabel !== lastDate) {
+      html += `<div class="chat-date-divider">${dateLabel}</div>`;
+      lastDate = dateLabel;
+    }
+
+    const isSent = msg.senderRole === userRole;
+    const time = formatMessageTime(msg.createdAt);
+    const senderName = getRoleDisplayName(msg.senderRole);
+    const isRead = Boolean(msg.isRead) || (isSent && maxReadReceiptId >= msg.id);
+
+    html += `
+      <div class="message-item ${isSent ? 'sent' : 'received'}" data-id="${msg.id || ''}">
+        ${!isSent ? `<div class="message-sender"><i class="fa-solid ${msg.senderRole === 'doctor' ? 'fa-user-doctor' : 'fa-shield-halved'}"></i> ${escapeHtml(senderName)}</div>` : ''}
+        <div class="message-text">${escapeHtml(msg.message)}</div>
+        <div class="message-footer">
+          <span class="message-time">${time}</span>
+          ${isSent ? `<span class="msg-status ${isRead ? 'read' : ''}"><i class="fa-solid fa-check${isRead ? '-double' : ''}" title="${isRead ? 'Read' : 'Sent'}"></i></span>` : ''}
+        </div>
+      </div>
+    `;
+  });
+
+  messageList.innerHTML = html;
+
+  if (forceScrollToBottom) {
+    messageList.scrollTop = messageList.scrollHeight;
+  }
+}
+
+// Backwards-compatible alias for existing callers
+function renderMessages(forceScrollToBottom = false) {
+  renderAllMessages(forceScrollToBottom);
+}
+
+function appendMessageToDom(msg) {
+  const messageList = document.getElementById('message-list');
+  if (!messageList) return;
+
+  const emptyState = messageList.querySelector('.message-empty-state');
+  if (emptyState) {
+    messageList.innerHTML = '';
+  }
+
+  const userRole = getCurrentUserRole();
+  const isSent = msg.senderRole === userRole;
+  const time = formatMessageTime(msg.createdAt);
+  const senderName = getRoleDisplayName(msg.senderRole);
+  const isRead = Boolean(msg.isRead) || (isSent && maxReadReceiptId >= msg.id);
+
+  // Check if date divider is needed
+  const dateLabel = getChatDateLabel(msg.createdAt);
+  const lastDivider = messageList.querySelector('.chat-date-divider:last-of-type');
+  if (!lastDivider || lastDivider.textContent !== dateLabel) {
+    const divider = document.createElement('div');
+    divider.className = 'chat-date-divider';
+    divider.textContent = dateLabel;
+    messageList.appendChild(divider);
+  }
+
+  const item = document.createElement('div');
+  item.className = `message-item ${isSent ? 'sent' : 'received'}`;
+  if (msg.id) item.setAttribute('data-id', msg.id);
+  if (msg.tempId) item.setAttribute('data-temp-id', msg.tempId);
+
+  item.innerHTML = `
+    ${!isSent ? `<div class="message-sender"><i class="fa-solid ${msg.senderRole === 'doctor' ? 'fa-user-doctor' : 'fa-shield-halved'}"></i> ${escapeHtml(senderName)}</div>` : ''}
+    <div class="message-text">${escapeHtml(msg.message)}</div>
+    <div class="message-footer">
+      <span class="message-time">${time}</span>
+      ${isSent ? `<span class="msg-status ${isRead ? 'read' : ''}"><i class="fa-solid fa-check${isRead ? '-double' : ''}" title="${isRead ? 'Read' : 'Sent'}"></i></span>` : ''}
+    </div>
+  `;
+
+  messageList.appendChild(item);
+}
+
+// Merges incoming state messages without clearing user viewport
+function syncMessagesFromBackend(incomingMessages = [], unreadCount = 0) {
+  if (!Array.isArray(incomingMessages)) return;
+
+  const userRole = getCurrentUserRole();
+  if (!userRole) return;
+
+  const oldUnreadCount = state.unreadCount || 0;
+  state.unreadCount = unreadCount;
+
+  let hasNew = false;
+  incomingMessages.forEach(msg => {
+    const exists = state.messages.some(m => m.id === msg.id);
+    if (!exists) {
+      hasNew = true;
+      state.messages.push(msg);
+      if (msg.id > lastMessageId) lastMessageId = msg.id;
+
+      const popup = document.getElementById('message-popup');
+      if (popup && !popup.hidden) {
+        appendMessageToDom(msg);
+      }
+    }
+  });
+
+  if (hasNew) {
+    const popup = document.getElementById('message-popup');
+    if (popup && !popup.hidden) {
+      smartScrollToBottom();
+      markMessagesAsRead();
+    }
+  }
+
+  if (oldUnreadCount !== state.unreadCount) {
+    updateMessageBadge();
+  }
+}
+
+// Lightweight incremental polling
+async function pollMessages() {
+  if (!isAdminAuthenticated() && !isDoctorAuthenticated()) return;
+  if (isPollingMessages) return;
+  isPollingMessages = true;
+
+  try {
+    const apiUrl = getBackendApiUrl();
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'poll-messages',
+        lastId: lastMessageId
+      }),
+      cache: 'no-store'
+    });
+
+    const data = await response.json();
+    if (data?.success) {
+      if (typeof data.maxReadId === 'number') {
+        maxReadReceiptId = data.maxReadId;
+        markDomSentMessagesAsRead(maxReadReceiptId);
+      }
+
+      const newMessages = data.messages || [];
+      const userRole = getCurrentUserRole();
+
+      if (lastMessageId === 0) {
+        // Initial load
+        state.messages = newMessages;
+        if (newMessages.length > 0) {
+          lastMessageId = Math.max(...newMessages.map(m => m.id));
+        }
+        renderAllMessages(true);
+      } else if (newMessages.length > 0) {
+        let hasForeignNew = false;
+
+        newMessages.forEach(msg => {
+          const exists = state.messages.some(m => m.id === msg.id);
+          if (!exists) {
+            state.messages.push(msg);
+            if (msg.id > lastMessageId) lastMessageId = msg.id;
+
+            appendMessageToDom(msg);
+
+            if (msg.senderRole !== userRole) {
+              hasForeignNew = true;
+            }
+          }
+        });
+
+        const popup = document.getElementById('message-popup');
+        if (popup && !popup.hidden) {
+          smartScrollToBottom();
+          if (hasForeignNew) {
+            markMessagesAsRead();
+          }
+        } else if (hasForeignNew) {
+          playMessageNotificationSound();
+          const lastMsg = newMessages[newMessages.length - 1];
+          showDesktopNotification(getRoleDisplayName(lastMsg.senderRole), lastMsg.message);
+        }
+      }
+
+      state.unreadCount = data.unreadCount || 0;
+      updateMessageBadge();
+    }
+  } catch (error) {
+    console.warn('Message polling error:', error);
+  } finally {
+    isPollingMessages = false;
+  }
+}
+
+async function markMessagesAsRead() {
+  const userRole = getCurrentUserRole();
+  if (!userRole) return;
+
+  try {
+    const apiUrl = getBackendApiUrl();
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'mark-messages-read' }),
+      cache: 'no-store'
+    });
+    const data = await response.json();
+    if (data?.success) {
+      state.unreadCount = 0;
+      updateMessageBadge();
+
+      broadcastChatEvent({
+        type: 'messages-read',
+        readerRole: userRole,
+        maxId: lastMessageId
+      });
+    }
+  } catch (e) {
+    console.warn('markMessagesAsRead error:', e);
+  }
+}
+
+async function sendMessage(message) {
+  const text = (message || '').trim();
+  if (!text) return;
+
+  const userRole = getCurrentUserRole();
+  const receiverRole = getChatPartnerRole();
+  if (!userRole || !receiverRole) return;
+
+  const tempId = 'temp_' + Date.now();
+  const optimisticMsg = {
+    id: 0,
+    tempId,
+    senderRole: userRole,
+    receiverRole: receiverRole,
+    message: text,
+    isRead: false,
+    createdAt: new Date().toISOString()
+  };
+
+  state.messages.push(optimisticMsg);
+  appendMessageToDom(optimisticMsg);
+  playSentMessageSound();
+  smartScrollToBottom(true);
+
+  // Hide typing indicator immediately
+  const indicator = document.getElementById('message-typing-indicator');
+  if (indicator) indicator.hidden = true;
+
+  try {
+    const apiUrl = getBackendApiUrl();
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'send-message',
+        message: text,
+        receiverRole: receiverRole
+      }),
+      cache: 'no-store'
+    });
+
+    const data = await response.json();
+    if (data?.success && data.data) {
+      const savedMsg = data.data;
+      optimisticMsg.id = savedMsg.id;
+      optimisticMsg.createdAt = savedMsg.createdAt;
+      if (savedMsg.id > lastMessageId) lastMessageId = savedMsg.id;
+
+      const messageList = document.getElementById('message-list');
+      if (messageList) {
+        const item = messageList.querySelector(`[data-temp-id="${tempId}"]`);
+        if (item) {
+          item.setAttribute('data-id', savedMsg.id);
+          item.removeAttribute('data-temp-id');
+          const timeSpan = item.querySelector('.message-time');
+          if (timeSpan) timeSpan.textContent = formatMessageTime(savedMsg.createdAt);
+          const statusSpan = item.querySelector('.msg-status');
+          if (statusSpan) statusSpan.innerHTML = '<i class="fa-solid fa-check" title="Sent"></i>';
+        }
+      }
+
+      broadcastChatEvent({
+        type: 'new-message',
+        message: savedMsg
+      });
+    } else {
+      console.error('Failed to send message:', data?.message);
+    }
+  } catch (error) {
+    console.error('Error sending message:', error);
+  }
+}
+
+function startFastMessagePolling() {
+  stopFastMessagePolling();
+  messagePollInterval = setInterval(() => {
+    if (!document.hidden && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+      pollMessages();
+    }
+  }, 800);
+}
+
+function stopFastMessagePolling() {
+  if (messagePollInterval) {
+    clearInterval(messagePollInterval);
+    messagePollInterval = null;
+  }
+}
+
+function toggleMessagePopup(forceOpen = false) {
+  const messagePopup = document.getElementById('message-popup');
+  if (!messagePopup) return;
+
+  const willBeOpen = forceOpen || messagePopup.hidden;
+  messagePopup.hidden = !willBeOpen;
+
+  if (willBeOpen) {
+    updateChatHeaderInfo();
+    setupQuickReplies();
+    updateSoundButton();
+    renderAllMessages(true);
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      try { Notification.requestPermission(); } catch (e) {}
+    }
+
+    setTimeout(() => {
+      markMessagesAsRead();
+    }, 350);
+
+    const input = document.getElementById('message-input');
+    if (input) {
+      setTimeout(() => input.focus(), 150);
+    }
+
+    startFastMessagePolling();
+  } else {
+    stopFastMessagePolling();
   }
 }
 
@@ -3069,94 +3710,7 @@ function closeMessagePopup() {
   const messagePopup = document.getElementById('message-popup');
   if (messagePopup) {
     messagePopup.hidden = true;
-  }
-}
-
-function renderMessages(forceScrollToBottom = false) {
-  const messageList = document.getElementById('message-list');
-  if (!messageList) {
-    return;
-  }
-
-  if (!state.messages || state.messages.length === 0) {
-    messageList.innerHTML = '<p class="muted" style="text-align: center; padding: 20px;">No messages yet.</p>';
-    return;
-  }
-
-  // Check if user is already at the bottom before re-rendering
-  const isAtBottom = messageList.scrollHeight - messageList.scrollTop <= messageList.clientHeight + 50;
-
-  const userRole = isAdminAuthenticated() ? 'admin' : 'doctor';
-
-  messageList.innerHTML = state.messages.map((msg) => {
-    const isSent = msg.senderRole === userRole;
-    const senderName = msg.senderRole === 'admin' ? 'Admin' : 'Doctor';
-    const time = new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    return `
-      <div class="message-item ${isSent ? 'sent' : 'received'}">
-        <div class="message-sender">${senderName}</div>
-        <div class="message-text">${escapeHtml(msg.message)}</div>
-        <div class="message-time">${time}</div>
-      </div>
-    `;
-  }).join('');
-
-  // Only scroll to bottom if forced or if user was already at the bottom
-  if (forceScrollToBottom || isAtBottom) {
-    messageList.scrollTop = messageList.scrollHeight;
-  }
-}
-
-async function sendMessage(message) {
-  const userRole = isAdminAuthenticated() ? 'admin' : 'doctor';
-  const receiverRole = userRole === 'admin' ? 'doctor' : 'admin';
-
-  console.log('Sending message:', message, 'from', userRole, 'to', receiverRole);
-
-  try {
-    const apiUrl = '/backend/api_postgres.php';
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        action: 'send-message',
-        message,
-        receiverRole
-      }),
-      cache: 'no-store',
-    });
-
-    const data = await response.json();
-    console.log('Send response:', data);
-
-    if (data?.success) {
-      // Immediately add the message to local state for instant display
-      const newMessage = {
-        id: Date.now(), // Temporary ID
-        senderRole: userRole,
-        receiverRole: receiverRole,
-        message: message,
-        isRead: false,
-        createdAt: new Date().toISOString()
-      };
-
-      state.messages.push(newMessage);
-      console.log('Message added to state, total messages:', state.messages.length);
-      renderMessages(true); // Force scroll to bottom when sending
-      updateMessageBadge();
-
-      // Then poll to get the actual message from database
-      setTimeout(() => {
-        pollMessages();
-      }, 500);
-    } else {
-      console.error('Failed to send message:', data?.message);
-    }
-  } catch (error) {
-    console.error('Error sending message:', error);
+    stopFastMessagePolling();
   }
 }
 
@@ -3168,6 +3722,10 @@ function initMessaging() {
   const messageForm = document.getElementById('message-form');
   const messageInput = document.getElementById('message-input');
   const messagePopup = document.getElementById('message-popup');
+  const scrollBottomBtn = document.getElementById('message-scroll-bottom-btn');
+  const messageList = document.getElementById('message-list');
+
+  initChatSync();
 
   if (messageBtn) {
     messageBtn.addEventListener('click', (event) => {
@@ -3188,7 +3746,12 @@ function initMessaging() {
       event.stopPropagation();
       if (confirm('Delete all messages older than 24 hours?')) {
         await postAction('cleanup-messages');
-        await pollMessages();
+        state.messages = [];
+        state.unreadCount = 0;
+        lastMessageId = 0;
+        renderAllMessages(true);
+        updateMessageBadge();
+        broadcastChatEvent({ type: 'cleanup' });
       }
     });
   }
@@ -3200,16 +3763,37 @@ function initMessaging() {
     });
   }
 
+  if (scrollBottomBtn) {
+    scrollBottomBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      smartScrollToBottom(true);
+    });
+  }
+
+  if (messageList) {
+    messageList.addEventListener('scroll', () => {
+      const isAtBottom = messageList.scrollHeight - messageList.scrollTop <= messageList.clientHeight + 65;
+      if (isAtBottom && scrollBottomBtn) {
+        scrollBottomBtn.hidden = true;
+      }
+    });
+  }
+
+  if (messageInput) {
+    messageInput.addEventListener('input', () => {
+      handleTypingInput();
+    });
+  }
+
   if (messageForm && messageInput) {
     messageForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       event.stopPropagation();
       const message = messageInput.value.trim();
       if (message) {
-        await sendMessage(message);
         messageInput.value = '';
-        // Keep focus on input for quick messaging
         messageInput.focus();
+        await sendMessage(message);
       }
     });
   }
@@ -3217,15 +3801,26 @@ function initMessaging() {
   // Close popup when clicking outside (works for both desktop and mobile)
   if (messagePopup) {
     document.addEventListener('click', (event) => {
-      if (!messagePopup.contains(event.target) && !messageBtn.contains(event.target)) {
+      if (!messagePopup.hidden && !messagePopup.contains(event.target) && messageBtn && !messageBtn.contains(event.target)) {
+        closeMessagePopup();
+      }
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !messagePopup.hidden) {
         closeMessagePopup();
       }
     });
   }
 
-  // Initially hide message button if not authenticated
+  // Visibility based on authentication
   if (messageBtn && !isAdminAuthenticated() && !isDoctorAuthenticated()) {
     messageBtn.hidden = true;
+  }
+
+  // Initial poll for messages if authenticated
+  if (isAdminAuthenticated() || isDoctorAuthenticated()) {
+    pollMessages();
   }
 }
 
