@@ -287,11 +287,27 @@ function updateQueueNumber(?PDO $db, int $nextQueueNumber): void {
     }
 }
 
+function ensureMessagesTable(?PDO $db): void {
+    if ($db === null) return;
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS messages (
+            id SERIAL PRIMARY KEY,
+            sender_role VARCHAR(50) NOT NULL,
+            receiver_role VARCHAR(50) NOT NULL,
+            message TEXT NOT NULL,
+            is_read BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+    } catch (Exception $e) {}
+}
+
 function loadMessagesFromDatabase(?PDO $db, string $userRole): array {
     try {
         if ($db === null) {
             return [];
         }
+
+        ensureMessagesTable($db);
 
         $stmt = $db->prepare("SELECT id, sender_role, receiver_role, message, is_read, created_at
                              FROM messages
@@ -405,10 +421,20 @@ function loadVideoConfig(?PDO $db): array {
             playlist_url VARCHAR(500),
             is_enabled BOOLEAN DEFAULT FALSE,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_by VARCHAR(50)
+            updated_by VARCHAR(50),
+            last_command VARCHAR(50) DEFAULT '',
+            command_seq BIGINT DEFAULT 0,
+            is_paused BOOLEAN DEFAULT FALSE
         )");
 
-        $stmt = $db->prepare("SELECT id, playlist_id, playlist_title, playlist_url, is_enabled, updated_at, updated_by
+        // Add columns if table already existed without them
+        try {
+            $db->exec("ALTER TABLE video_config ADD COLUMN IF NOT EXISTS last_command VARCHAR(50) DEFAULT ''");
+            $db->exec("ALTER TABLE video_config ADD COLUMN IF NOT EXISTS command_seq BIGINT DEFAULT 0");
+            $db->exec("ALTER TABLE video_config ADD COLUMN IF NOT EXISTS is_paused BOOLEAN DEFAULT FALSE");
+        } catch (Exception $e) {}
+
+        $stmt = $db->prepare("SELECT id, playlist_id, playlist_title, playlist_url, is_enabled, updated_at, updated_by, last_command, command_seq, is_paused
                              FROM video_config
                              WHERE id = 1");
         $stmt->execute();
@@ -422,7 +448,10 @@ function loadVideoConfig(?PDO $db): array {
                 'playlistUrl' => $config['playlist_url'],
                 'isEnabled' => (bool)$config['is_enabled'],
                 'updatedAt' => $config['updated_at'],
-                'updatedBy' => $config['updated_by']
+                'updatedBy' => $config['updated_by'],
+                'lastCommand' => $config['last_command'] ?? '',
+                'commandSeq' => (int)($config['command_seq'] ?? 0),
+                'isPaused' => (bool)($config['is_paused'] ?? false),
             ];
         }
 
@@ -433,7 +462,10 @@ function loadVideoConfig(?PDO $db): array {
             'playlistUrl' => '',
             'isEnabled' => false,
             'updatedAt' => null,
-            'updatedBy' => null
+            'updatedBy' => null,
+            'lastCommand' => '',
+            'commandSeq' => 0,
+            'isPaused' => false
         ];
     } catch (PDOException $e) {
         error_log('Error loading video config: ' . $e->getMessage());
@@ -444,7 +476,10 @@ function loadVideoConfig(?PDO $db): array {
             'playlistUrl' => '',
             'isEnabled' => false,
             'updatedAt' => null,
-            'updatedBy' => null
+            'updatedBy' => null,
+            'lastCommand' => '',
+            'commandSeq' => 0,
+            'isPaused' => false
         ];
     }
 }
@@ -456,22 +491,26 @@ function saveVideoConfig(?PDO $db, array $config): void {
             return;
         }
 
-        $stmt = $db->prepare("INSERT INTO video_config (id, playlist_id, playlist_title, playlist_url, is_enabled, updated_by)
-                             VALUES (1, :playlistId, :playlistTitle, :playlistUrl, :isEnabled, :updatedBy)
+        $stmt = $db->prepare("INSERT INTO video_config (id, playlist_id, playlist_title, playlist_url, is_enabled, updated_by, last_command, command_seq, is_paused)
+                             VALUES (1, :playlistId, :playlistTitle, :playlistUrl, :isEnabled, :updatedBy, :lastCommand, 1, false)
                              ON CONFLICT (id) DO UPDATE
                              SET playlist_id = EXCLUDED.playlist_id,
                                  playlist_title = EXCLUDED.playlist_title,
                                  playlist_url = EXCLUDED.playlist_url,
                                  is_enabled = EXCLUDED.is_enabled,
                                  updated_by = EXCLUDED.updated_by,
-                                 updated_at = CURRENT_TIMESTAMP");
+                                 updated_at = CURRENT_TIMESTAMP,
+                                 last_command = EXCLUDED.last_command,
+                                 command_seq = COALESCE(video_config.command_seq, 0) + 1,
+                                 is_paused = false");
 
         $stmt->execute([
             ':playlistId' => $config['playlistId'],
             ':playlistTitle' => $config['playlistTitle'],
             ':playlistUrl' => $config['playlistUrl'],
             ':isEnabled' => $config['isEnabled'] ? 'true' : 'false',
-            ':updatedBy' => $config['updatedBy']
+            ':updatedBy' => $config['updatedBy'],
+            ':lastCommand' => $config['isEnabled'] ? 'play' : 'stop'
         ]);
     } catch (PDOException $e) {
         error_log('Error saving video config: ' . $e->getMessage());
@@ -1485,6 +1524,49 @@ try {
                 ]);
             } catch (Exception $e) {
                 jsonResponse(['success' => false, 'message' => 'Failed to save video configuration'], 500);
+            }
+            break;
+
+        case 'video-control':
+            $command = trim((string) ($payload['command'] ?? ''));
+            $allowedCommands = ['pause', 'resume', 'next', 'prev', 'unmute', 'play', 'stop'];
+            if (!in_array($command, $allowedCommands, true)) {
+                jsonResponse(['success' => false, 'message' => 'Invalid video control command'], 400);
+                exit;
+            }
+
+            try {
+                $seq = !empty($payload['seq']) ? (int)$payload['seq'] : (int)(microtime(true) * 1000);
+                $sql = "UPDATE video_config 
+                        SET last_command = :cmd, 
+                            command_seq = :seq,
+                            updated_at = CURRENT_TIMESTAMP";
+                $params = [
+                    ':cmd' => $command,
+                    ':seq' => $seq
+                ];
+
+                if ($command === 'pause') {
+                    $sql .= ", is_paused = true";
+                } elseif ($command === 'resume' || $command === 'play') {
+                    $sql .= ", is_paused = false";
+                } elseif ($command === 'stop') {
+                    $sql .= ", is_paused = false, is_enabled = false";
+                }
+
+                $sql .= " WHERE id = 1";
+                $stmt = $db->prepare($sql);
+                $stmt->execute($params);
+
+                $state = loadStateFromDatabase($db);
+                jsonResponse([
+                    'success' => true,
+                    'message' => 'Video command recorded',
+                    'state' => $state,
+                    'videoConfig' => $state['videoConfig']
+                ]);
+            } catch (Exception $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to execute video command'], 500);
             }
             break;
 

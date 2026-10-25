@@ -292,11 +292,46 @@ function broadcastState(nextState) {
   }
 }
 
+// Track last processed remote command sequence to avoid duplicate executions
+let lastProcessedCommandSeq = 0;
+let isInitialStateFetched = false;
+let heartbeatWorker = null;
+
+function startHeartbeat(callback, intervalMs = 1000) {
+  try {
+    const workerBlob = new Blob([
+      `setInterval(() => { postMessage('tick'); }, ${intervalMs});`
+    ], { type: 'application/javascript' });
+    const workerUrl = URL.createObjectURL(workerBlob);
+    heartbeatWorker = new Worker(workerUrl);
+    heartbeatWorker.onmessage = () => {
+      try { callback(); } catch (err) { console.warn('Heartbeat callback error:', err); }
+    };
+  } catch (err) {
+    console.warn('Web Worker heartbeat unavailable, falling back to setInterval:', err);
+    setInterval(callback, intervalMs);
+  }
+}
+
+function processIncomingVideoCommand(payload) {
+  if (!payload || !payload.command) return;
+  const seq = Number(payload.seq) || 0;
+  if (seq && seq <= lastProcessedCommandSeq) {
+    return; // Already processed!
+  }
+  if (seq) {
+    lastProcessedCommandSeq = seq;
+  }
+  handleRemoteVideoCommand(payload.command, payload.videoConfig);
+}
+
 // Broadcasts real-time video playback commands (play, stop, pause, resume, next, prev, unmute)
-function broadcastVideoCommand(command, videoConfig = null) {
+function broadcastVideoCommand(command, videoConfig = null, seq = null) {
+  const currentSeq = seq || Date.now();
   const payload = {
     type: 'video-command',
     command,
+    seq: currentSeq,
     videoConfig: videoConfig || state.videoConfig,
     timestamp: Date.now()
   };
@@ -326,8 +361,18 @@ function initRealtimeSync() {
         state = event.data.state;
         render();
         checkForNewPatients();
+        if (document.body.classList.contains('waiting-room')) {
+          updateYouTubePlayer();
+          if (state.videoConfig && state.videoConfig.commandSeq && state.videoConfig.commandSeq > lastProcessedCommandSeq) {
+            processIncomingVideoCommand({
+              command: state.videoConfig.lastCommand,
+              seq: state.videoConfig.commandSeq,
+              videoConfig: state.videoConfig
+            });
+          }
+        }
       } else if (event.data?.type === 'video-command') {
-        handleRemoteVideoCommand(event.data.command, event.data.videoConfig);
+        processIncomingVideoCommand(event.data);
       }
     });
   }
@@ -336,9 +381,7 @@ function initRealtimeSync() {
     if (event.key === 'queue-video-command' && event.newValue) {
       try {
         const payload = JSON.parse(event.newValue);
-        if (payload?.command) {
-          handleRemoteVideoCommand(payload.command, payload.videoConfig);
-        }
+        processIncomingVideoCommand(payload);
       } catch (e) {
         console.warn('Error parsing storage video command', e);
       }
@@ -356,6 +399,16 @@ function initRealtimeSync() {
           state = payload.state;
           render();
           checkForNewPatients();
+          if (document.body.classList.contains('waiting-room')) {
+            updateYouTubePlayer();
+            if (state.videoConfig && state.videoConfig.commandSeq && state.videoConfig.commandSeq > lastProcessedCommandSeq) {
+              processIncomingVideoCommand({
+                command: state.videoConfig.lastCommand,
+                seq: state.videoConfig.commandSeq,
+                videoConfig: state.videoConfig
+              });
+            }
+          }
         }
       } catch (error) {
         console.warn('Unable to sync queue state from storage', error);
@@ -366,15 +419,15 @@ function initRealtimeSync() {
   // Initial fetch
   fetchState();
 
-  // Set up polling for LAN sync
-  // Waiting room display NEVER pauses polling when window is in the background
-  setInterval(() => {
+  // Set up unthrottled Web Worker heartbeat polling for LAN sync across computers
+  // Bypasses Chrome background-tab 60s throttling so remote waiting rooms react instantly
+  startHeartbeat(() => {
     const isWaitingRoom = document.body.classList.contains('waiting-room');
     if (!document.hidden || isWaitingRoom) {
       fetchState();
       pollNotifications();
     }
-  }, 2000);
+  }, 1000);
 
   // Set up faster polling for messages (real-time)
   setInterval(() => {
@@ -386,7 +439,7 @@ function initRealtimeSync() {
 
 async function pollMessages() {
   try {
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = getBackendApiUrl();
     const response = await fetch(apiUrl, { cache: 'no-store' });
     const data = await response.json();
     if (data?.success) {
@@ -421,8 +474,7 @@ async function pollMessages() {
 //This function fetches the current state of the queue from the backend API and updates the local state accordingly. It also handles any errors that may occur during the fetch operation.
 async function fetchState() {
   try {
-    // Use root-relative path for Docker/LAN compatibility
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = `${getBackendApiUrl()}?_t=${Date.now()}`;
     const response = await fetch(apiUrl, { cache: 'no-store' });
     const data = await response.json();
     if (data?.success && data.state) {
@@ -432,6 +484,36 @@ async function fetchState() {
       render();
       checkForNewPatients();
       updateMessageBadge();
+
+      // Synchronize waiting room video player with latest database state and remote commands
+      if (document.body.classList.contains('waiting-room')) {
+        updateYouTubePlayer();
+        const cfg = state.videoConfig;
+        if (cfg) {
+          const cfgSeq = Number(cfg.commandSeq) || 0;
+          if (!isInitialStateFetched) {
+            isInitialStateFetched = true;
+            lastProcessedCommandSeq = cfgSeq;
+            if (cfg.isPaused) {
+              handleRemoteVideoCommand('pause', cfg);
+            }
+          } else if (cfgSeq > lastProcessedCommandSeq) {
+            processIncomingVideoCommand({
+              command: cfg.lastCommand,
+              seq: cfgSeq,
+              videoConfig: cfg
+            });
+          } else if (cfg.isPaused) {
+            // State enforcement: if database state indicates pause, keep player paused
+            postToPlayerIframe('pauseVideo');
+          }
+        }
+      }
+
+      // Sync admin remote pause button state across all admin sessions
+      if (document.body.classList.contains('admin-body') && state.videoConfig) {
+        updateRemotePauseUI(Boolean(state.videoConfig.isPaused));
+      }
     }
   } catch (error) {
     console.error('Unable to load queue state', error);
@@ -441,8 +523,7 @@ async function fetchState() {
 //This function sends a POST request to the backend API with the specified action and payload. It updates the local state based on the response and handles any errors that may occur during the request.
 async function postAction(action, payload = {}) {
   try {
-    // Use root-relative path for Docker/LAN compatibility
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = getBackendApiUrl();
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -479,8 +560,7 @@ async function postAction(action, payload = {}) {
 // this function simulates an admin login by checking against hardcoded credentials.
 async function loginAdmin(username, password) {
   try {
-    // Use root-relative path for Docker/LAN compatibility
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = getBackendApiUrl();
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -511,6 +591,9 @@ function getBackendApiUrl() {
   const projectMatch = path.match(/^(\/[^\/]+)?\/public\//i);
   if (projectMatch && projectMatch[1]) {
     return `${projectMatch[1]}/backend/api_postgres.php`;
+  }
+  if (path.includes('/public/')) {
+    return '../backend/api_postgres.php';
   }
   return '/backend/api_postgres.php';
 }
@@ -1706,9 +1789,57 @@ function render() {
   checkForNewPatients();
 }
 
+function updateRemotePauseUI(isPaused) {
+  const remoteToggleBtn = document.getElementById('video-remote-toggle-btn');
+  if (!remoteToggleBtn) return;
+  remoteToggleBtn.dataset.paused = isPaused ? 'true' : 'false';
+  if (isPaused) {
+    remoteToggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Resume';
+    remoteToggleBtn.className = 'btn btn-secondary';
+    remoteToggleBtn.title = 'Resume video on waiting room display';
+  } else {
+    remoteToggleBtn.innerHTML = '<i class="fa-solid fa-pause"></i> Pause';
+    remoteToggleBtn.className = 'btn btn-primary';
+    remoteToggleBtn.title = 'Pause video on waiting room display';
+  }
+}
+
+async function sendRemoteCommand(command) {
+  const seq = Date.now();
+
+  // Optimistically update remote toggle button UI
+  if (command === 'pause') {
+    updateRemotePauseUI(true);
+  } else if (command === 'resume') {
+    updateRemotePauseUI(false);
+  }
+
+  // 1. Broadcast immediately to open tabs/windows on this browser
+  broadcastVideoCommand(command, state.videoConfig, seq);
+
+  // 2. Persist to PostgreSQL backend for LAN synchronization across all devices
+  try {
+    const apiUrl = getBackendApiUrl();
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'video-control', command: command, seq: seq }),
+      cache: 'no-store'
+    });
+    const data = await response.json();
+    if (data?.success && data?.state) {
+      state = data.state;
+      broadcastState(data.state);
+    }
+  } catch (err) {
+    console.warn('sendRemoteCommand backend sync error:', err);
+  }
+}
+
 async function loadVideoConfigDisplay() {
   try {
-    const response = await fetch('/backend/api_postgres.php', {
+    const apiUrl = getBackendApiUrl();
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'get-video-config' }),
@@ -1836,8 +1967,7 @@ async function loadVideoConfigDisplay() {
       if (remotePrevBtn) remotePrevBtn.disabled = !hasActiveVideo;
       if (remoteToggleBtn) {
         remoteToggleBtn.disabled = !hasActiveVideo;
-        remoteToggleBtn.innerHTML = '<i class="fa-solid fa-pause"></i> Pause';
-        remoteToggleBtn.className = 'btn btn-primary';
+        updateRemotePauseUI(Boolean(config.isPaused));
       }
       if (remoteNextBtn) remoteNextBtn.disabled = !hasActiveVideo;
       if (remoteUnmuteBtn) remoteUnmuteBtn.disabled = !hasActiveVideo;
@@ -1893,40 +2023,31 @@ function initVideoManagement() {
   const remoteToggleBtn = document.getElementById('video-remote-toggle-btn');
   const remoteNextBtn = document.getElementById('video-remote-next-btn');
   const remoteUnmuteBtn = document.getElementById('video-remote-unmute-btn');
-  let isRemotePaused = false;
 
   if (remotePrevBtn) {
     remotePrevBtn.onclick = () => {
-      broadcastVideoCommand('prev');
+      sendRemoteCommand('prev');
     };
   }
 
   if (remoteToggleBtn) {
     remoteToggleBtn.onclick = () => {
-      isRemotePaused = !isRemotePaused;
-      if (isRemotePaused) {
-        broadcastVideoCommand('pause');
-        remoteToggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Resume';
-        remoteToggleBtn.className = 'btn btn-secondary';
-      } else {
-        broadcastVideoCommand('resume');
-        remoteToggleBtn.innerHTML = '<i class="fa-solid fa-pause"></i> Pause';
-        remoteToggleBtn.className = 'btn btn-primary';
-      }
+      const isCurrentlyPaused = remoteToggleBtn.dataset.paused === 'true';
+      sendRemoteCommand(!isCurrentlyPaused ? 'pause' : 'resume');
     };
   }
 
   if (remoteNextBtn) {
     remoteNextBtn.onclick = () => {
-      broadcastVideoCommand('next');
+      sendRemoteCommand('next');
     };
   }
 
   if (remoteUnmuteBtn) {
     remoteUnmuteBtn.onclick = () => {
-      broadcastVideoCommand('unmute');
+      sendRemoteCommand('unmute');
       const original = remoteUnmuteBtn.innerHTML;
-      remoteUnmuteBtn.innerHTML = '<i class="fa-solid fa-check"></i> Unmuted!';
+      remoteUnmuteBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i> Unmuted!';
       setTimeout(() => { remoteUnmuteBtn.innerHTML = original; }, 2000);
     };
   }
@@ -2028,7 +2149,7 @@ function initVideoManagement() {
       addToLibraryBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Adding...';
 
       try {
-        const apiUrl = '/backend/api_postgres.php';
+        const apiUrl = getBackendApiUrl();
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2073,7 +2194,7 @@ async function loadPlaylistLibrary() {
   if (!libraryList) return;
 
   try {
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = getBackendApiUrl();
     const [libraryResponse, configResponse] = await Promise.all([
       fetch(apiUrl, {
         method: 'POST',
@@ -2258,7 +2379,7 @@ async function loadPlaylistLibrary() {
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
 
         try {
-          const apiUrl = '/backend/api_postgres.php';
+          const apiUrl = getBackendApiUrl();
           await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -3114,6 +3235,23 @@ let currentLoadedPlaylistId = null;
 let currentPlaylistEnabled = null;
 let pendingVideoPlay = false;
 
+function postToPlayerIframe(func, args = []) {
+  try {
+    const iframes = document.querySelectorAll('#youtube-player iframe, iframe#youtube-player, .youtube-player-container iframe');
+    iframes.forEach((iframe) => {
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage(JSON.stringify({
+          event: 'command',
+          func: func,
+          args: args
+        }), '*');
+      }
+    });
+  } catch (err) {
+    console.warn('postToPlayerIframe error:', err);
+  }
+}
+
 function showUnmuteNotice() {
   const notice = document.getElementById('video-unmute-notice');
   if (notice) {
@@ -3126,6 +3264,27 @@ function hideUnmuteNotice() {
   if (notice) {
     notice.hidden = true;
   }
+}
+
+function unmuteYouTubePlayer() {
+  if (youtubePlayer) {
+    try {
+      if (typeof youtubePlayer.unMute === 'function') youtubePlayer.unMute();
+      if (typeof youtubePlayer.setVolume === 'function') youtubePlayer.setVolume(100);
+    } catch (e) {}
+  }
+  postToPlayerIframe('unMute');
+  postToPlayerIframe('setVolume', [100]);
+  hideUnmuteNotice();
+
+  // If the browser strictly blocked audio due to autoplay policy requiring user interaction, re-show notice
+  setTimeout(() => {
+    try {
+      if (youtubePlayer && typeof youtubePlayer.isMuted === 'function' && youtubePlayer.isMuted()) {
+        showUnmuteNotice();
+      }
+    } catch (e) {}
+  }, 400);
 }
 
 function forceAutoplay(player) {
@@ -3146,6 +3305,7 @@ function forceAutoplay(player) {
       player.playVideo();
     }
   } catch (e) {}
+  postToPlayerIframe('playVideo');
 
   // 2. Browser Autoplay Policy Verification:
   // If the browser blocked unmuted autoplay, player will stay unstarted (-1) or paused (2).
@@ -3159,9 +3319,11 @@ function forceAutoplay(player) {
         if (typeof player.mute === 'function') {
           player.mute();
         }
+        postToPlayerIframe('mute');
         if (typeof player.playVideo === 'function') {
           player.playVideo();
         }
+        postToPlayerIframe('playVideo');
         showUnmuteNotice();
       } else {
         // Playing with audio succeeded!
@@ -3171,7 +3333,9 @@ function forceAutoplay(player) {
       console.warn('Player state check error, applying mute fallback:', err);
       try {
         if (typeof player.mute === 'function') player.mute();
+        postToPlayerIframe('mute');
         if (typeof player.playVideo === 'function') player.playVideo();
+        postToPlayerIframe('playVideo');
         showUnmuteNotice();
       } catch (e) {}
     }
@@ -3195,6 +3359,7 @@ function stopYouTubePlayer() {
       youtubePlayer.stopVideo();
     } catch (e) {}
   }
+  postToPlayerIframe('stopVideo');
 
   const playerEl = document.getElementById('youtube-player');
   if (playerEl) {
@@ -3227,32 +3392,27 @@ function handleRemoteVideoCommand(command, videoConfig = null) {
     if (youtubePlayer && typeof youtubePlayer.pauseVideo === 'function') {
       try { youtubePlayer.pauseVideo(); } catch (e) {}
     }
+    postToPlayerIframe('pauseVideo');
   } else if (command === 'resume') {
     if (youtubePlayer && typeof youtubePlayer.playVideo === 'function') {
-      try { forceAutoplay(youtubePlayer); } catch (e) {}
+      try { youtubePlayer.playVideo(); } catch (e) {}
     }
+    postToPlayerIframe('playVideo');
   } else if (command === 'next') {
+    // Advance to next video in playlist without disrupting playlist buffer
     if (youtubePlayer && typeof youtubePlayer.nextVideo === 'function') {
-      try {
-        youtubePlayer.nextVideo();
-        forceAutoplay(youtubePlayer);
-      } catch (e) {}
+      try { youtubePlayer.nextVideo(); } catch (e) {}
     }
+    postToPlayerIframe('nextVideo');
   } else if (command === 'prev') {
+    // Return to previous video in playlist without disrupting playlist buffer
     if (youtubePlayer && typeof youtubePlayer.previousVideo === 'function') {
-      try {
-        youtubePlayer.previousVideo();
-        forceAutoplay(youtubePlayer);
-      } catch (e) {}
+      try { youtubePlayer.previousVideo(); } catch (e) {}
     }
+    postToPlayerIframe('prevVideo');
+    postToPlayerIframe('previousVideo');
   } else if (command === 'unmute') {
-    if (youtubePlayer && typeof youtubePlayer.unMute === 'function') {
-      try {
-        youtubePlayer.unMute();
-        youtubePlayer.setVolume(100);
-        hideUnmuteNotice();
-      } catch (e) {}
-    }
+    unmuteYouTubePlayer();
   }
 }
 
@@ -3309,7 +3469,12 @@ function initYouTubePlayer(forcePlay = false) {
         list: videoConfig.playlistId,
         listType: 'playlist'
       });
-      forceAutoplay(youtubePlayer);
+      if (videoConfig.isPaused) {
+        try { youtubePlayer.pauseVideo(); } catch (e) {}
+        postToPlayerIframe('pauseVideo');
+      } else {
+        forceAutoplay(youtubePlayer);
+      }
       currentLoadedPlaylistId = videoConfig.playlistId;
       currentPlaylistEnabled = true;
       return;
@@ -3330,7 +3495,7 @@ function initYouTubePlayer(forcePlay = false) {
       playerVars: {
         'list': videoConfig.playlistId,
         'listType': 'playlist',
-        'autoplay': 1,
+        'autoplay': videoConfig.isPaused ? 0 : 1,
         'controls': 1,
         'rel': 0,
         'modestbranding': 1,
@@ -3340,7 +3505,12 @@ function initYouTubePlayer(forcePlay = false) {
       },
       events: {
         'onReady': (event) => {
-          forceAutoplay(event.target);
+          if (state.videoConfig && state.videoConfig.isPaused) {
+            try { event.target.pauseVideo(); } catch (e) {}
+            postToPlayerIframe('pauseVideo');
+          } else {
+            forceAutoplay(event.target);
+          }
         },
         'onError': onPlayerError
       }
@@ -3381,13 +3551,11 @@ function onYouTubeIframeAPIReady() {
 // Waiting Room: Global click/touch listener to unmute video once user interacts
 if (document.body.classList.contains('waiting-room')) {
   document.addEventListener('click', () => {
-    if (youtubePlayer && typeof youtubePlayer.isMuted === 'function' && youtubePlayer.isMuted()) {
-      try {
-        youtubePlayer.unMute();
-        youtubePlayer.setVolume(100);
-        hideUnmuteNotice();
-      } catch (e) {}
-    }
+    unmuteYouTubePlayer();
+  });
+
+  document.addEventListener('keydown', () => {
+    unmuteYouTubePlayer();
   });
 
   document.addEventListener('DOMContentLoaded', () => {
@@ -3395,13 +3563,7 @@ if (document.body.classList.contains('waiting-room')) {
     if (noticeBtn) {
       noticeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (youtubePlayer) {
-          try {
-            youtubePlayer.unMute();
-            youtubePlayer.setVolume(100);
-          } catch (err) {}
-        }
-        hideUnmuteNotice();
+        unmuteYouTubePlayer();
       });
     }
   });
