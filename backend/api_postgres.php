@@ -1476,7 +1476,13 @@ try {
                     'isEnabled' => $isEnabled,
                     'updatedBy' => $updatedBy
                 ]);
-                jsonResponse(['success' => true, 'message' => 'Video configuration saved successfully']);
+                $state = loadStateFromDatabase($db);
+                jsonResponse([
+                    'success' => true,
+                    'message' => 'Video configuration saved successfully',
+                    'state' => $state,
+                    'videoConfig' => $state['videoConfig']
+                ]);
             } catch (Exception $e) {
                 jsonResponse(['success' => false, 'message' => 'Failed to save video configuration'], 500);
             }

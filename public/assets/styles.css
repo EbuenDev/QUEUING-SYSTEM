@@ -3566,3 +3566,88 @@ body.admin-body {
     display: none;
   }
 }
+
+/* Waiting Room Remote Controls in Admin */
+.video-remote-controls {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #E2E8F0;
+}
+
+.video-remote-controls h4 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 10px;
+}
+
+.video-remote-btns {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.video-remote-btns .btn {
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+/* Unmute Badge in Waiting Room */
+.video-unmute-badge {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s ease;
+  animation: pulse-unmute 2s infinite;
+}
+
+.video-unmute-badge:hover {
+  background: rgba(15, 23, 42, 0.98);
+  transform: scale(1.04);
+}
+
+.video-unmute-badge i {
+  color: #38bdf8;
+  font-size: 1rem;
+}
+
+@keyframes pulse-unmute {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(56, 189, 248, 0), 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+}
+
+.youtube-player,
+iframe.youtube-player,
+#youtube-player {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  z-index: 2;
+}

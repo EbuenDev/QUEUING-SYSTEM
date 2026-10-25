@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RHU II Patient Queue - Waiting Room</title>
-    <link rel="stylesheet" href="assets/styles.css" />
+    <link rel="stylesheet" href="assets/styles.css?v=5.1" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
     <script src="https://www.youtube.com/iframe_api"></script>
@@ -40,6 +41,10 @@
               <div class="placeholder-text">No playlist configured</div>
             </div>
             <div id="youtube-player" class="youtube-player"></div>
+            <button id="video-unmute-notice" class="video-unmute-badge" type="button" hidden>
+              <i class="fa-solid fa-volume-xmark"></i>
+              <span>Click anywhere to unmute</span>
+            </button>
           </div>
         </div>
       </section>

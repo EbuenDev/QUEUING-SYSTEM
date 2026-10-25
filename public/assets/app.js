@@ -292,6 +292,31 @@ function broadcastState(nextState) {
   }
 }
 
+// Broadcasts real-time video playback commands (play, stop, pause, resume, next, prev, unmute)
+function broadcastVideoCommand(command, videoConfig = null) {
+  const payload = {
+    type: 'video-command',
+    command,
+    videoConfig: videoConfig || state.videoConfig,
+    timestamp: Date.now()
+  };
+
+  if (updateChannel) {
+    try {
+      updateChannel.postMessage(payload);
+    } catch (e) {
+      console.warn('Unable to post message on updateChannel', e);
+    }
+  }
+
+  try {
+    localStorage.setItem('queue-video-command', JSON.stringify(payload));
+    localStorage.setItem('queue-video-event', String(payload.timestamp));
+  } catch (error) {
+    console.warn('Unable to broadcast video command to storage', error);
+  }
+}
+
 //This function initializes real-time synchronization of the queue state across multiple browser tabs or windows. It uses the BroadcastChannel API if available, and also listens for changes in localStorage to update the state accordingly.
 function initRealtimeSync() {
   if (typeof BroadcastChannel !== 'undefined') {
@@ -301,11 +326,25 @@ function initRealtimeSync() {
         state = event.data.state;
         render();
         checkForNewPatients();
+      } else if (event.data?.type === 'video-command') {
+        handleRemoteVideoCommand(event.data.command, event.data.videoConfig);
       }
     });
   }
 
   window.addEventListener('storage', (event) => {
+    if (event.key === 'queue-video-command' && event.newValue) {
+      try {
+        const payload = JSON.parse(event.newValue);
+        if (payload?.command) {
+          handleRemoteVideoCommand(payload.command, payload.videoConfig);
+        }
+      } catch (e) {
+        console.warn('Error parsing storage video command', e);
+      }
+      return;
+    }
+
     if (event.key !== 'queue-state-sync' && event.key !== 'queue-state-event') {
       return;
     }
@@ -328,10 +367,10 @@ function initRealtimeSync() {
   fetchState();
 
   // Set up polling for LAN sync
-  // This is necessary for multi-computer sync on LAN
+  // Waiting room display NEVER pauses polling when window is in the background
   setInterval(() => {
-    // Only fetch if page is visible to reduce unnecessary requests
-    if (!document.hidden) {
+    const isWaitingRoom = document.body.classList.contains('waiting-room');
+    if (!document.hidden || isWaitingRoom) {
       fetchState();
       pollNotifications();
     }
@@ -1787,6 +1826,22 @@ async function loadVideoConfigDisplay() {
         }
       }
 
+      // Update Remote Control Buttons
+      const remotePrevBtn = document.getElementById('video-remote-prev-btn');
+      const remoteToggleBtn = document.getElementById('video-remote-toggle-btn');
+      const remoteNextBtn = document.getElementById('video-remote-next-btn');
+      const remoteUnmuteBtn = document.getElementById('video-remote-unmute-btn');
+      const hasActiveVideo = Boolean(config.isEnabled && config.playlistId);
+
+      if (remotePrevBtn) remotePrevBtn.disabled = !hasActiveVideo;
+      if (remoteToggleBtn) {
+        remoteToggleBtn.disabled = !hasActiveVideo;
+        remoteToggleBtn.innerHTML = '<i class="fa-solid fa-pause"></i> Pause';
+        remoteToggleBtn.className = 'btn btn-primary';
+      }
+      if (remoteNextBtn) remoteNextBtn.disabled = !hasActiveVideo;
+      if (remoteUnmuteBtn) remoteUnmuteBtn.disabled = !hasActiveVideo;
+
       // Update Quick Action Buttons
       const openYoutubeBtn = document.getElementById('video-open-youtube-btn');
       const copyUrlBtn = document.getElementById('video-copy-url-btn');
@@ -1833,6 +1888,49 @@ function initVideoManagement() {
     });
   }
 
+  // Live Remote Controls for Waiting Room
+  const remotePrevBtn = document.getElementById('video-remote-prev-btn');
+  const remoteToggleBtn = document.getElementById('video-remote-toggle-btn');
+  const remoteNextBtn = document.getElementById('video-remote-next-btn');
+  const remoteUnmuteBtn = document.getElementById('video-remote-unmute-btn');
+  let isRemotePaused = false;
+
+  if (remotePrevBtn) {
+    remotePrevBtn.onclick = () => {
+      broadcastVideoCommand('prev');
+    };
+  }
+
+  if (remoteToggleBtn) {
+    remoteToggleBtn.onclick = () => {
+      isRemotePaused = !isRemotePaused;
+      if (isRemotePaused) {
+        broadcastVideoCommand('pause');
+        remoteToggleBtn.innerHTML = '<i class="fa-solid fa-play"></i> Resume';
+        remoteToggleBtn.className = 'btn btn-secondary';
+      } else {
+        broadcastVideoCommand('resume');
+        remoteToggleBtn.innerHTML = '<i class="fa-solid fa-pause"></i> Pause';
+        remoteToggleBtn.className = 'btn btn-primary';
+      }
+    };
+  }
+
+  if (remoteNextBtn) {
+    remoteNextBtn.onclick = () => {
+      broadcastVideoCommand('next');
+    };
+  }
+
+  if (remoteUnmuteBtn) {
+    remoteUnmuteBtn.onclick = () => {
+      broadcastVideoCommand('unmute');
+      const original = remoteUnmuteBtn.innerHTML;
+      remoteUnmuteBtn.innerHTML = '<i class="fa-solid fa-check"></i> Unmuted!';
+      setTimeout(() => { remoteUnmuteBtn.innerHTML = original; }, 2000);
+    };
+  }
+
   // Video configuration form — Save & Apply
   const videoConfigForm = document.getElementById('video-config-form');
   if (videoConfigForm) {
@@ -1855,6 +1953,9 @@ function initVideoManagement() {
         playlistTitle,
         isEnabled
       });
+
+      // Broadcast video command immediately to waiting room displays
+      broadcastVideoCommand(isEnabled ? 'play' : 'stop');
 
       // Refresh video config display and library
       await loadVideoConfigDisplay();
@@ -1891,6 +1992,14 @@ function initVideoManagement() {
       if (toggleText) toggleText.textContent = 'Disabled';
 
       await postAction('save-video-config', {
+        playlistUrl: '',
+        playlistTitle: '',
+        isEnabled: false
+      });
+
+      // Instantly stop video on waiting room displays
+      broadcastVideoCommand('stop', {
+        playlistId: '',
         playlistUrl: '',
         playlistTitle: '',
         isEnabled: false
@@ -2066,11 +2175,20 @@ async function loadPlaylistLibrary() {
       if (action === 'play') {
         const playlistUrl = btn.dataset.playlistUrl;
         const playlistTitle = btn.dataset.playlistTitle;
+        const playlistId = btn.dataset.playlistId;
 
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
 
         await postAction('save-video-config', {
+          playlistUrl,
+          playlistTitle,
+          isEnabled: true
+        });
+
+        // Broadcast to waiting room display to immediately start playback
+        broadcastVideoCommand('play', {
+          playlistId,
           playlistUrl,
           playlistTitle,
           isEnabled: true
@@ -2094,12 +2212,24 @@ async function loadPlaylistLibrary() {
       }
 
       if (action === 'stop') {
+        const playlistUrl = btn.dataset.playlistUrl;
+        const playlistTitle = btn.dataset.playlistTitle;
+        const playlistId = btn.dataset.playlistId;
+
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
 
         await postAction('save-video-config', {
-          playlistUrl: btn.dataset.playlistUrl,
-          playlistTitle: btn.dataset.playlistTitle,
+          playlistUrl,
+          playlistTitle,
+          isEnabled: false
+        });
+
+        // Broadcast to waiting room display to immediately stop playback
+        broadcastVideoCommand('stop', {
+          playlistId,
+          playlistUrl,
+          playlistTitle,
           isEnabled: false
         });
 
@@ -2982,38 +3112,162 @@ function initMessaging() {
 let youtubePlayer = null;
 let currentLoadedPlaylistId = null;
 let currentPlaylistEnabled = null;
+let pendingVideoPlay = false;
 
-function initYouTubePlayer() {
+function showUnmuteNotice() {
+  const notice = document.getElementById('video-unmute-notice');
+  if (notice) {
+    notice.hidden = false;
+  }
+}
+
+function hideUnmuteNotice() {
+  const notice = document.getElementById('video-unmute-notice');
+  if (notice) {
+    notice.hidden = true;
+  }
+}
+
+function forceAutoplay(player) {
+  if (!player) return;
+
+  // Ensure iframe permissions allow autoplay and fullscreen across all browsers
+  try {
+    const iframe = typeof player.getIframe === 'function' ? player.getIframe() : (typeof player.getIFrame === 'function' ? player.getIFrame() : document.querySelector('#youtube-player iframe, iframe#youtube-player'));
+    if (iframe) {
+      iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+      iframe.setAttribute('allowfullscreen', '1');
+    }
+  } catch (e) {}
+
+  // 1. First attempt: unmuted playback
+  try {
+    if (typeof player.playVideo === 'function') {
+      player.playVideo();
+    }
+  } catch (e) {}
+
+  // 2. Browser Autoplay Policy Verification:
+  // If the browser blocked unmuted autoplay, player will stay unstarted (-1) or paused (2).
+  // Muting guarantees immediate autoplay without requiring navigation or interaction on index.html.
+  setTimeout(() => {
+    try {
+      const playerState = typeof player.getPlayerState === 'function' ? player.getPlayerState() : -1;
+      // 1 = playing, 3 = buffering
+      if (playerState !== 1 && playerState !== 3) {
+        console.log('Autoplay with audio blocked by browser policy. Automatically muting to ensure automatic playback on patient display...');
+        if (typeof player.mute === 'function') {
+          player.mute();
+        }
+        if (typeof player.playVideo === 'function') {
+          player.playVideo();
+        }
+        showUnmuteNotice();
+      } else {
+        // Playing with audio succeeded!
+        hideUnmuteNotice();
+      }
+    } catch (err) {
+      console.warn('Player state check error, applying mute fallback:', err);
+      try {
+        if (typeof player.mute === 'function') player.mute();
+        if (typeof player.playVideo === 'function') player.playVideo();
+        showUnmuteNotice();
+      } catch (e) {}
+    }
+  }, 600);
+}
+
+function stopYouTubePlayer() {
+  const placeholder = document.getElementById('youtube-placeholder');
+  const subtitle = document.querySelector('.video-card .card-subtitle');
+  if (subtitle) subtitle.textContent = 'YouTube playlist';
+  if (placeholder) {
+    placeholder.hidden = false;
+    const placeholderText = document.querySelector('.placeholder-text');
+    if (placeholderText) {
+      placeholderText.textContent = 'Broadcasting paused by administrator';
+    }
+  }
+
+  if (youtubePlayer && typeof youtubePlayer.stopVideo === 'function') {
+    try {
+      youtubePlayer.stopVideo();
+    } catch (e) {}
+  }
+
+  const playerEl = document.getElementById('youtube-player');
+  if (playerEl) {
+    playerEl.style.display = 'none';
+  }
+
+  currentLoadedPlaylistId = null;
+  currentPlaylistEnabled = false;
+  hideUnmuteNotice();
+}
+
+function handleRemoteVideoCommand(command, videoConfig = null) {
+  const isWaitingRoom = document.body.classList.contains('waiting-room');
+  if (!isWaitingRoom) return;
+
+  console.log('Remote video command received on waiting room:', command, videoConfig);
+
+  if (command === 'play') {
+    if (videoConfig && videoConfig.playlistId) {
+      state.videoConfig = videoConfig;
+      currentLoadedPlaylistId = null; // Force reload & autoplay
+      initYouTubePlayer(true);
+    } else {
+      fetchState().then(() => initYouTubePlayer(true));
+    }
+  } else if (command === 'stop') {
+    if (videoConfig) state.videoConfig = videoConfig;
+    stopYouTubePlayer();
+  } else if (command === 'pause') {
+    if (youtubePlayer && typeof youtubePlayer.pauseVideo === 'function') {
+      try { youtubePlayer.pauseVideo(); } catch (e) {}
+    }
+  } else if (command === 'resume') {
+    if (youtubePlayer && typeof youtubePlayer.playVideo === 'function') {
+      try { forceAutoplay(youtubePlayer); } catch (e) {}
+    }
+  } else if (command === 'next') {
+    if (youtubePlayer && typeof youtubePlayer.nextVideo === 'function') {
+      try {
+        youtubePlayer.nextVideo();
+        forceAutoplay(youtubePlayer);
+      } catch (e) {}
+    }
+  } else if (command === 'prev') {
+    if (youtubePlayer && typeof youtubePlayer.previousVideo === 'function') {
+      try {
+        youtubePlayer.previousVideo();
+        forceAutoplay(youtubePlayer);
+      } catch (e) {}
+    }
+  } else if (command === 'unmute') {
+    if (youtubePlayer && typeof youtubePlayer.unMute === 'function') {
+      try {
+        youtubePlayer.unMute();
+        youtubePlayer.setVolume(100);
+        hideUnmuteNotice();
+      } catch (e) {}
+    }
+  }
+}
+
+function initYouTubePlayer(forcePlay = false) {
   const videoConfig = state.videoConfig;
   const placeholder = document.getElementById('youtube-placeholder');
   const playerContainer = document.getElementById('youtube-player-container');
   const subtitle = document.querySelector('.video-card .card-subtitle');
 
   if (!videoConfig || !videoConfig.isEnabled || !videoConfig.playlistId) {
-    if (subtitle) subtitle.textContent = 'YouTube playlist';
-    if (placeholder) placeholder.hidden = false;
+    stopYouTubePlayer();
     const placeholderText = document.querySelector('.placeholder-text');
     if (placeholderText) {
-      if (videoConfig && videoConfig.playlistId && !videoConfig.isEnabled) {
-        placeholderText.textContent = 'Broadcasting paused by administrator';
-      } else {
-        placeholderText.textContent = 'No playlist configured';
-      }
+      placeholderText.textContent = 'No playlist configured';
     }
-
-    if (youtubePlayer && typeof youtubePlayer.stopVideo === 'function') {
-      try {
-        youtubePlayer.stopVideo();
-      } catch (e) {}
-    }
-
-    const playerEl = document.getElementById('youtube-player');
-    if (playerEl) {
-      playerEl.style.display = 'none';
-    }
-
-    currentLoadedPlaylistId = null;
-    currentPlaylistEnabled = false;
     return;
   }
 
@@ -3022,8 +3276,8 @@ function initYouTubePlayer() {
     subtitle.textContent = videoConfig.playlistTitle;
   }
 
-  // If already playing this playlist, don't restart it on every 2-second poll
-  if (currentLoadedPlaylistId === videoConfig.playlistId && currentPlaylistEnabled === true) {
+  // If already playing this playlist and not forced, don't restart it on every poll
+  if (currentLoadedPlaylistId === videoConfig.playlistId && currentPlaylistEnabled === true && !forcePlay) {
     const playerEl = document.getElementById('youtube-player');
     if (playerEl) playerEl.style.display = '';
     if (placeholder) placeholder.hidden = true;
@@ -3032,7 +3286,7 @@ function initYouTubePlayer() {
 
   // YouTube API might not be loaded yet
   if (typeof YT === 'undefined' || typeof YT.Player === 'undefined') {
-    // API not ready yet; onYouTubeIframeAPIReady will invoke this again
+    pendingVideoPlay = true;
     return;
   }
 
@@ -3048,12 +3302,14 @@ function initYouTubePlayer() {
   }
   playerDiv.style.display = '';
 
+  // If player already exists, load the playlist and force autoplay
   if (youtubePlayer && typeof youtubePlayer.loadPlaylist === 'function') {
     try {
       youtubePlayer.loadPlaylist({
         list: videoConfig.playlistId,
         listType: 'playlist'
       });
+      forceAutoplay(youtubePlayer);
       currentLoadedPlaylistId = videoConfig.playlistId;
       currentPlaylistEnabled = true;
       return;
@@ -3066,7 +3322,7 @@ function initYouTubePlayer() {
     }
   }
 
-  // Create new player
+  // Create new player with autoplay and API enabled
   try {
     youtubePlayer = new YT.Player('youtube-player', {
       height: '100%',
@@ -3078,13 +3334,13 @@ function initYouTubePlayer() {
         'controls': 1,
         'rel': 0,
         'modestbranding': 1,
-        'playsinline': 1
+        'playsinline': 1,
+        'enablejsapi': 1,
+        'origin': window.location.origin
       },
       events: {
         'onReady': (event) => {
-          try {
-            event.target.playVideo();
-          } catch (e) {}
+          forceAutoplay(event.target);
         },
         'onError': onPlayerError
       }
@@ -3117,8 +3373,38 @@ function updateYouTubePlayer() {
 // YouTube API callback
 function onYouTubeIframeAPIReady() {
   if (document.body.classList.contains('waiting-room')) {
-    initYouTubePlayer();
+    initYouTubePlayer(pendingVideoPlay);
+    pendingVideoPlay = false;
   }
+}
+
+// Waiting Room: Global click/touch listener to unmute video once user interacts
+if (document.body.classList.contains('waiting-room')) {
+  document.addEventListener('click', () => {
+    if (youtubePlayer && typeof youtubePlayer.isMuted === 'function' && youtubePlayer.isMuted()) {
+      try {
+        youtubePlayer.unMute();
+        youtubePlayer.setVolume(100);
+        hideUnmuteNotice();
+      } catch (e) {}
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const noticeBtn = document.getElementById('video-unmute-notice');
+    if (noticeBtn) {
+      noticeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (youtubePlayer) {
+          try {
+            youtubePlayer.unMute();
+            youtubePlayer.setVolume(100);
+          } catch (err) {}
+        }
+        hideUnmuteNotice();
+      });
+    }
+  });
 }
 
 // Admin Dashboard Navigation
