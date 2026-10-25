@@ -229,6 +229,8 @@ function setDoctorView(isAuthenticated) {
   const hamburgerBtn = document.getElementById('hamburger-menu-btn');
   const hamburgerMenu = document.getElementById('hamburger-menu');
   const messageBtn = document.getElementById('message-btn');
+  const doctorSidebar = document.querySelector('.admin-sidebar');
+  const menuLogout = document.getElementById('menu-logout');
 
   if (loginCard) {
     loginCard.hidden = isAuthenticated;
@@ -236,6 +238,14 @@ function setDoctorView(isAuthenticated) {
 
   if (doctorPanel) {
     doctorPanel.hidden = !isAuthenticated;
+  }
+
+  if (doctorSidebar) {
+    doctorSidebar.hidden = !isAuthenticated;
+  }
+
+  if (menuLogout) {
+    menuLogout.hidden = !isAuthenticated;
   }
 
   if (logoutButton) {
@@ -435,7 +445,6 @@ function initRealtimeSync() {
       const popup = document.getElementById('message-popup');
       if (!popup || popup.hidden) {
         pollMessages();
-        pollTypingStatus();
       }
     }
   }, 1500);
@@ -1598,11 +1607,15 @@ function renderDoctorQueue() {
 
   // Render follow-up patients section
   if (followUpSection && followUpPatientList) {
+    followUpSection.hidden = false;
+    const followupCountLabel = document.getElementById('doctor-followup-count');
+    if (followupCountLabel) {
+      followupCountLabel.textContent = `${followUpPatients.length} patient${followUpPatients.length === 1 ? '' : 's'}`;
+    }
+
     if (followUpPatients.length === 0) {
-      followUpSection.hidden = true;
-      followUpPatientList.innerHTML = '';
+      followUpPatientList.innerHTML = '<li class="empty-state">No patients in follow-up queue.</li>';
     } else {
-      followUpSection.hidden = false;
       followUpPatientList.innerHTML = followUpPatients
         .map((patient) => {
           const patientType = patient.patientStatus || patient.type || 'regular';
@@ -2732,6 +2745,16 @@ function initDoctorPage() {
 
   initHistoryEditForm();
 
+  const quickQueueBtn = document.getElementById('doctor-quick-queue-btn');
+  if (quickQueueBtn) {
+    quickQueueBtn.addEventListener('click', () => {
+      const queueNav = document.querySelector('.nav-item[data-page="queue"]');
+      if (queueNav) {
+        queueNav.click();
+      }
+    });
+  }
+
   // Add click handler for edit-history button in consultation history
   document.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
@@ -2992,8 +3015,6 @@ let lastMessageId = 0;
 let maxReadReceiptId = 0;
 let soundEnabled = localStorage.getItem('messageSoundEnabled') !== 'false'; // Default to true
 let isPollingMessages = false;
-let partnerTypingTimeout = null;
-let lastTypingBroadcastTime = 0;
 let messagePollInterval = null;
 
 function getCurrentUserRole() {
@@ -3171,11 +3192,6 @@ function handleIncomingChatEvent(data) {
     if (data.readerRole && data.readerRole !== userRole) {
       markDomSentMessagesAsRead(data.maxId || 0);
     }
-  } else if (data.type === 'typing') {
-    const userRole = getCurrentUserRole();
-    if (data.senderRole && data.senderRole !== userRole) {
-      showTypingIndicator(getRoleDisplayName(data.senderRole));
-    }
   } else if (data.type === 'cleanup') {
     state.messages = [];
     state.unreadCount = 0;
@@ -3297,62 +3313,6 @@ function setupQuickReplies() {
       }
     });
   });
-}
-
-function showTypingIndicator(senderName) {
-  const indicator = document.getElementById('message-typing-indicator');
-  const label = document.getElementById('typing-text');
-  if (!indicator || !label) return;
-
-  label.textContent = `${senderName} is typing...`;
-  indicator.hidden = false;
-
-  if (partnerTypingTimeout) {
-    clearTimeout(partnerTypingTimeout);
-  }
-
-  partnerTypingTimeout = setTimeout(() => {
-    indicator.hidden = true;
-  }, 2800);
-}
-
-async function handleTypingInput() {
-  const input = document.getElementById('message-input');
-  if (!input) return;
-
-  // Only send typing status if there's actual text in the input
-  const hasText = input.value.trim().length > 0;
-  if (!hasText) return;
-
-  const now = Date.now();
-  if (now - lastTypingBroadcastTime > 1500) {
-    lastTypingBroadcastTime = now;
-    broadcastChatEvent({
-      type: 'typing',
-      senderRole: getCurrentUserRole()
-    });
-
-    // Also send typing status to server for LAN sync
-    const userRole = getCurrentUserRole();
-    if (userRole) {
-      try {
-        const apiUrl = getBackendApiUrl();
-        await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'set-typing-status',
-            userRole: userRole,
-            isTyping: true
-          }),
-          credentials: 'same-origin',
-          cache: 'no-store'
-        });
-      } catch (e) {
-        console.warn('Failed to send typing status to server:', e);
-      }
-    }
-  }
 }
 
 function getChatDateLabel(dateString) {
@@ -3712,28 +3672,6 @@ async function sendMessage(message) {
   playSentMessageSound();
   smartScrollToBottom(true);
 
-  // Hide typing indicator immediately
-  const indicator = document.getElementById('message-typing-indicator');
-  if (indicator) indicator.hidden = true;
-
-  // Clear typing status on server when message is sent
-  try {
-    const apiUrl = getBackendApiUrl();
-    await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'set-typing-status',
-        userRole: userRole,
-        isTyping: false
-      }),
-      credentials: 'same-origin',
-      cache: 'no-store'
-    });
-  } catch (e) {
-    // Silently fail
-  }
-
   try {
     const apiUrl = getBackendApiUrl();
     const response = await fetch(apiUrl, {
@@ -3781,41 +3719,11 @@ async function sendMessage(message) {
   }
 }
 
-async function pollTypingStatus() {
-  if (!isAdminAuthenticated() && !isDoctorAuthenticated()) return;
-
-  try {
-    const apiUrl = getBackendApiUrl();
-    const userRole = getCurrentUserRole();
-    if (!userRole) return;
-
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'get-typing-status',
-        userRole: userRole
-      }),
-      credentials: 'same-origin',
-      cache: 'no-store'
-    });
-
-    const data = await response.json();
-    if (data?.success && data.partnerIsTyping) {
-      const senderName = getRoleDisplayName(userRole === 'admin' ? 'doctor' : 'admin');
-      showTypingIndicator(senderName);
-    }
-  } catch (error) {
-    // Silently fail typing status polling
-  }
-}
-
 function startFastMessagePolling() {
   stopFastMessagePolling();
   messagePollInterval = setInterval(() => {
     if (!document.hidden && (isAdminAuthenticated() || isDoctorAuthenticated())) {
       pollMessages();
-      pollTypingStatus();
     }
   }, 800);
 }
@@ -3835,27 +3743,6 @@ async function toggleMessagePopup(forceOpen = false) {
   messagePopup.hidden = !willBeOpen;
 
   if (willBeOpen) {
-    // Clear any existing typing status when opening popup
-    const userRole = getCurrentUserRole();
-    if (userRole) {
-      try {
-        const apiUrl = getBackendApiUrl();
-        await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'set-typing-status',
-            userRole: userRole,
-            isTyping: false
-          }),
-          credentials: 'same-origin',
-          cache: 'no-store'
-        });
-      } catch (e) {
-        // Silently fail
-      }
-    }
-
     if (!Array.isArray(state.messages)) state.messages = [];
     updateChatHeaderInfo();
     setupQuickReplies();
@@ -3880,27 +3767,6 @@ async function toggleMessagePopup(forceOpen = false) {
     startFastMessagePolling();
   } else {
     stopFastMessagePolling();
-
-    // Clear typing status when popup is closed
-    const userRole = getCurrentUserRole();
-    if (userRole) {
-      try {
-        const apiUrl = getBackendApiUrl();
-        await fetch(apiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'set-typing-status',
-            userRole: userRole,
-            isTyping: false
-          }),
-          credentials: 'same-origin',
-          cache: 'no-store'
-        });
-      } catch (e) {
-        // Silently fail
-      }
-    }
   }
 }
 
@@ -3961,92 +3827,7 @@ function initMessaging() {
     });
   }
 
-  if (messageInput) {
-    let typingTimeout = null;
 
-    messageInput.addEventListener('input', () => {
-      // If input is empty, clear typing status immediately
-      if (messageInput.value.trim().length === 0) {
-        if (typingTimeout) {
-          clearTimeout(typingTimeout);
-        }
-        const userRole = getCurrentUserRole();
-        if (userRole) {
-          try {
-            const apiUrl = getBackendApiUrl();
-            fetch(apiUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'set-typing-status',
-                userRole: userRole,
-                isTyping: false
-              }),
-              credentials: 'same-origin',
-              cache: 'no-store'
-            });
-          } catch (e) {
-            // Silently fail
-          }
-        }
-        return;
-      }
-
-      handleTypingInput();
-
-      // Clear typing status after 3 seconds of no input
-      if (typingTimeout) {
-        clearTimeout(typingTimeout);
-      }
-      typingTimeout = setTimeout(async () => {
-        const userRole = getCurrentUserRole();
-        if (userRole) {
-          try {
-            const apiUrl = getBackendApiUrl();
-            await fetch(apiUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                action: 'set-typing-status',
-                userRole: userRole,
-                isTyping: false
-              }),
-              credentials: 'same-origin',
-              cache: 'no-store'
-            });
-          } catch (e) {
-            // Silently fail
-          }
-        }
-      }, 3000);
-    });
-
-    // Clear typing status when input loses focus
-    messageInput.addEventListener('blur', async () => {
-      if (typingTimeout) {
-        clearTimeout(typingTimeout);
-      }
-      const userRole = getCurrentUserRole();
-      if (userRole) {
-        try {
-          const apiUrl = getBackendApiUrl();
-          await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              action: 'set-typing-status',
-              userRole: userRole,
-              isTyping: false
-            }),
-            credentials: 'same-origin',
-            cache: 'no-store'
-          });
-        } catch (e) {
-          // Silently fail
-        }
-      }
-    });
-  }
 
   if (messageForm && messageInput) {
     messageForm.addEventListener('submit', async (event) => {
@@ -4668,7 +4449,12 @@ document.addEventListener('DOMContentLoaded', () => {
       logoutBtn.addEventListener('click', (event) => {
         event.preventDefault();
         openLogoutModal(async () => {
-          await logoutAdmin();
+          if (document.getElementById('doctor-patient-list')) {
+            await logoutDoctor();
+            hideDoctorNotification();
+          } else {
+            await logoutAdmin();
+          }
         });
       });
     }
