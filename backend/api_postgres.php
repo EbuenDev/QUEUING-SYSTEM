@@ -777,7 +777,12 @@ $state = loadStateFromDatabase($db);
 if ($method === 'GET') {
     // Determine user role for messages
     $userRole = 'guest';
-    if (isAdminAuthenticated()) {
+    $requestedRole = trim((string)($_GET['role'] ?? ''));
+    if ($requestedRole === 'admin' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+        $userRole = 'admin';
+    } elseif ($requestedRole === 'doctor' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+        $userRole = 'doctor';
+    } elseif (isAdminAuthenticated()) {
         $userRole = 'admin';
     } elseif (isDoctorAuthenticated()) {
         $userRole = 'doctor';
@@ -1486,13 +1491,17 @@ try {
             }
 
             if (!in_array($receiverRole, ['admin', 'doctor'], true)) {
-                jsonResponse(['success' => false, 'message' => 'Invalid receiver role'], 400);
-                exit;
+                $receiverRole = '';
             }
 
             // Determine sender role
             $senderRole = '';
-            if (isAdminAuthenticated()) {
+            $requestedRole = trim((string)($payload['senderRole'] ?? $payload['userRole'] ?? ''));
+            if ($requestedRole === 'admin' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $senderRole = 'admin';
+            } elseif ($requestedRole === 'doctor' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $senderRole = 'doctor';
+            } elseif (isAdminAuthenticated()) {
                 $senderRole = 'admin';
             } elseif (isDoctorAuthenticated()) {
                 $senderRole = 'doctor';
@@ -1501,10 +1510,9 @@ try {
                 exit;
             }
 
-            // Cannot send to self
-            if ($senderRole === $receiverRole) {
-                jsonResponse(['success' => false, 'message' => 'Cannot send message to yourself'], 400);
-                exit;
+            // Ensure receiver is the other role
+            if (empty($receiverRole) || $receiverRole === $senderRole) {
+                $receiverRole = ($senderRole === 'admin') ? 'doctor' : 'admin';
             }
 
             try {
@@ -1521,7 +1529,12 @@ try {
 
         case 'poll-messages':
             $userRole = '';
-            if (isAdminAuthenticated()) {
+            $requestedRole = trim((string)($payload['userRole'] ?? $payload['senderRole'] ?? ''));
+            if ($requestedRole === 'admin' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $userRole = 'admin';
+            } elseif ($requestedRole === 'doctor' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $userRole = 'doctor';
+            } elseif (isAdminAuthenticated()) {
                 $userRole = 'admin';
             } elseif (isDoctorAuthenticated()) {
                 $userRole = 'doctor';
@@ -1546,7 +1559,12 @@ try {
         case 'mark-messages-read':
             // Determine user role
             $userRole = '';
-            if (isAdminAuthenticated()) {
+            $requestedRole = trim((string)($payload['userRole'] ?? $payload['senderRole'] ?? ''));
+            if ($requestedRole === 'admin' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $userRole = 'admin';
+            } elseif ($requestedRole === 'doctor' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $userRole = 'doctor';
+            } elseif (isAdminAuthenticated()) {
                 $userRole = 'admin';
             } elseif (isDoctorAuthenticated()) {
                 $userRole = 'doctor';

@@ -440,14 +440,27 @@ function initRealtimeSync() {
   }, 1500);
 }
 
+function applyNewQueueState(newState) {
+  if (!newState || typeof newState !== 'object') return;
+  const currentMessages = Array.isArray(state?.messages) ? state.messages : [];
+  const currentUnread = typeof state?.unreadCount === 'number' ? state.unreadCount : 0;
+  state = {
+    ...newState,
+    messages: currentMessages,
+    unreadCount: currentUnread
+  };
+}
+
 //This function fetches the current state of the queue from the backend API and updates the local state accordingly. It also handles any errors that may occur during the fetch operation.
 async function fetchState() {
   try {
-    const apiUrl = `${getBackendApiUrl()}?_t=${Date.now()}`;
-    const response = await fetch(apiUrl, { cache: 'no-store' });
+    const userRole = getCurrentUserRole();
+    const roleParam = userRole ? `&role=${encodeURIComponent(userRole)}` : '';
+    const apiUrl = `${getBackendApiUrl()}?_t=${Date.now()}${roleParam}`;
+    const response = await fetch(apiUrl, { cache: 'no-store', credentials: 'same-origin' });
     const data = await response.json();
     if (data?.success && data.state) {
-      state = data.state;
+      applyNewQueueState(data.state);
       syncMessagesFromBackend(data.messages || [], data.unreadCount || 0);
       render();
       checkForNewPatients();
@@ -514,7 +527,7 @@ async function postAction(action, payload = {}) {
 
     //this is to ensure that the state is updated after any action is performed, and the UI reflects the latest state.
     if (data?.success && data.state) {
-      state = data.state;
+      applyNewQueueState(data.state);
       render();
       broadcastState(data.state);
       checkForNewPatients();
@@ -535,6 +548,7 @@ async function loginAdmin(username, password) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ action: 'login', username, password }),
+      credentials: 'same-origin',
       cache: 'no-store',
     });
 
@@ -721,13 +735,14 @@ async function logoutAdmin() {
 
 async function loginDoctor(username, password) {
   try {
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = getBackendApiUrl();
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ action: 'doctor-login', username, password }),
+      credentials: 'same-origin',
       cache: 'no-store',
     });
 
@@ -756,6 +771,7 @@ async function logoutDoctor() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ action: 'doctor-logout' }),
+      credentials: 'same-origin',
       cache: 'no-store',
     }).catch(err => {
       console.warn('Backend doctor logout failed, continuing local logout', err);
@@ -781,7 +797,7 @@ async function pollNotifications() {
   }
 
   try {
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = getBackendApiUrl();
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -791,6 +807,7 @@ async function pollNotifications() {
         action: 'poll-notifications',
         lastNotificationId: lastNotificationId 
       }),
+      credentials: 'same-origin',
       cache: 'no-store',
     });
 
@@ -823,7 +840,7 @@ async function pollNotifications() {
 
 async function markNotificationsAsRead(notificationIds) {
   try {
-    const apiUrl = '/backend/api_postgres.php';
+    const apiUrl = getBackendApiUrl();
     await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -833,6 +850,7 @@ async function markNotificationsAsRead(notificationIds) {
         action: 'mark-notifications-read',
         notificationIds: notificationIds 
       }),
+      credentials: 'same-origin',
       cache: 'no-store',
     });
   } catch (error) {
@@ -1796,7 +1814,7 @@ async function sendRemoteCommand(command) {
     });
     const data = await response.json();
     if (data?.success && data?.state) {
-      state = data.state;
+      applyNewQueueState(data.state);
       broadcastState(data.state);
     }
   } catch (err) {
@@ -2978,8 +2996,30 @@ let lastTypingBroadcastTime = 0;
 let messagePollInterval = null;
 
 function getCurrentUserRole() {
-  if (isAdminAuthenticated()) return 'admin';
+  const isDoctorPage = Boolean(
+    document.getElementById('doctor-patient-list') ||
+    document.getElementById('doctor-login-form') ||
+    document.getElementById('doctor-main-board') ||
+    window.location.pathname.toLowerCase().includes('doctor')
+  );
+
+  const isAdminPage = Boolean(
+    document.body.classList.contains('admin-body') ||
+    document.getElementById('patient-list') ||
+    document.getElementById('admin-login-form') ||
+    window.location.pathname.toLowerCase().includes('admin')
+  );
+
+  if (isDoctorPage) {
+    return 'doctor';
+  }
+
+  if (isAdminPage) {
+    return 'admin';
+  }
+
   if (isDoctorAuthenticated()) return 'doctor';
+  if (isAdminAuthenticated()) return 'admin';
   return '';
 }
 
@@ -3351,7 +3391,7 @@ function renderAllMessages(forceScrollToBottom = false) {
   const messageList = document.getElementById('message-list');
   if (!messageList) return;
 
-  if (!state.messages || state.messages.length === 0) {
+  if (!Array.isArray(state.messages) || state.messages.length === 0) {
     messageList.innerHTML = `
       <div class="message-empty-state">
         <i class="fa-solid fa-comments"></i>
@@ -3451,11 +3491,16 @@ function syncMessagesFromBackend(incomingMessages = [], unreadCount = 0) {
   const userRole = getCurrentUserRole();
   if (!userRole) return;
 
+  if (!Array.isArray(state.messages)) {
+    state.messages = [];
+  }
+
   const oldUnreadCount = state.unreadCount || 0;
   state.unreadCount = unreadCount;
 
   let hasNew = false;
   incomingMessages.forEach(msg => {
+    if (!msg || !msg.id) return;
     const exists = state.messages.some(m => m.id === msg.id);
     if (!exists) {
       hasNew = true;
@@ -3477,6 +3522,15 @@ function syncMessagesFromBackend(incomingMessages = [], unreadCount = 0) {
     }
   }
 
+  // If popup is open but empty state is showing while messages exist in state, re-render
+  const popup = document.getElementById('message-popup');
+  if (popup && !popup.hidden) {
+    const messageList = document.getElementById('message-list');
+    if (messageList && messageList.querySelector('.message-empty-state') && state.messages.length > 0) {
+      renderAllMessages(true);
+    }
+  }
+
   if (oldUnreadCount !== state.unreadCount) {
     updateMessageBadge();
   }
@@ -3490,13 +3544,22 @@ async function pollMessages() {
 
   try {
     const apiUrl = getBackendApiUrl();
+    const userRole = getCurrentUserRole();
+    if (!userRole) return;
+
+    if (!Array.isArray(state.messages)) {
+      state.messages = [];
+    }
+
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         action: 'poll-messages',
+        userRole: userRole,
         lastId: lastMessageId
       }),
+      credentials: 'same-origin',
       cache: 'no-store'
     });
 
@@ -3508,7 +3571,6 @@ async function pollMessages() {
       }
 
       const newMessages = data.messages || [];
-      const userRole = getCurrentUserRole();
 
       if (lastMessageId === 0) {
         // Initial load
@@ -3521,6 +3583,7 @@ async function pollMessages() {
         let hasForeignNew = false;
 
         newMessages.forEach(msg => {
+          if (!msg || !msg.id) return;
           const exists = state.messages.some(m => m.id === msg.id);
           if (!exists) {
             state.messages.push(msg);
@@ -3547,6 +3610,15 @@ async function pollMessages() {
         }
       }
 
+      // If popup is open but empty state is showing while messages exist in state, re-render
+      const popup = document.getElementById('message-popup');
+      if (popup && !popup.hidden) {
+        const messageList = document.getElementById('message-list');
+        if (messageList && messageList.querySelector('.message-empty-state') && state.messages.length > 0) {
+          renderAllMessages(true);
+        }
+      }
+
       state.unreadCount = data.unreadCount || 0;
       updateMessageBadge();
     }
@@ -3566,7 +3638,11 @@ async function markMessagesAsRead() {
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'mark-messages-read' }),
+      body: JSON.stringify({
+        action: 'mark-messages-read',
+        userRole: userRole
+      }),
+      credentials: 'same-origin',
       cache: 'no-store'
     });
     const data = await response.json();
@@ -3592,6 +3668,10 @@ async function sendMessage(message) {
   const userRole = getCurrentUserRole();
   const receiverRole = getChatPartnerRole();
   if (!userRole || !receiverRole) return;
+
+  if (!Array.isArray(state.messages)) {
+    state.messages = [];
+  }
 
   const tempId = 'temp_' + Date.now();
   const optimisticMsg = {
@@ -3621,8 +3701,10 @@ async function sendMessage(message) {
       body: JSON.stringify({
         action: 'send-message',
         message: text,
+        senderRole: userRole,
         receiverRole: receiverRole
       }),
+      credentials: 'same-origin',
       cache: 'no-store'
     });
 
@@ -3682,6 +3764,7 @@ function toggleMessagePopup(forceOpen = false) {
   messagePopup.hidden = !willBeOpen;
 
   if (willBeOpen) {
+    if (!Array.isArray(state.messages)) state.messages = [];
     updateChatHeaderInfo();
     setupQuickReplies();
     updateSoundButton();
@@ -3700,6 +3783,8 @@ function toggleMessagePopup(forceOpen = false) {
       setTimeout(() => input.focus(), 150);
     }
 
+    // Immediately fetch latest messages from server
+    pollMessages();
     startFastMessagePolling();
   } else {
     stopFastMessagePolling();
