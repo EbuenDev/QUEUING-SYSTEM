@@ -1679,35 +1679,480 @@ async function loadVideoConfigDisplay() {
 
     if (data?.success && data?.videoConfig) {
       const config = data.videoConfig;
-      const statusText = document.getElementById('video-status-text');
+
+      // Populate form fields
       const playlistUrlInput = document.getElementById('video-playlist-url');
       const playlistTitleInput = document.getElementById('video-playlist-title');
       const enabledSelect = document.getElementById('video-enabled');
+      const enabledToggle = document.getElementById('video-enabled-toggle');
+      const toggleText = document.getElementById('video-toggle-text');
 
-      if (statusText) {
+      if (playlistUrlInput) playlistUrlInput.value = config.playlistUrl || '';
+      if (playlistTitleInput) playlistTitleInput.value = config.playlistTitle || '';
+      if (enabledSelect) enabledSelect.value = config.isEnabled ? 'true' : 'false';
+      if (enabledToggle) {
+        enabledToggle.checked = config.isEnabled;
+      }
+      if (toggleText) {
+        toggleText.textContent = config.isEnabled ? 'Broadcasting' : 'Disabled';
+      }
+
+      // Update Status Banner
+      const statusDot = document.getElementById('video-status-dot');
+      const bannerLabel = document.getElementById('video-banner-label');
+      const bannerInfo = document.getElementById('video-banner-info');
+
+      if (statusDot && bannerLabel && bannerInfo) {
+        statusDot.className = 'status-dot';
         if (config.isEnabled && config.playlistId) {
-          statusText.textContent = `Enabled - ${config.playlistTitle || 'Untitled'}`;
-          statusText.style.color = '#16a34a';
+          statusDot.classList.add('active');
+          bannerLabel.textContent = 'Live — Broadcasting to Waiting Room';
+          bannerInfo.textContent = config.playlistTitle || 'Untitled Playlist';
+        } else if (config.playlistId && !config.isEnabled) {
+          statusDot.classList.add('disabled');
+          bannerLabel.textContent = 'Playlist Set — Broadcasting Paused';
+          bannerInfo.textContent = config.playlistTitle || 'Untitled Playlist';
         } else {
-          statusText.textContent = 'Disabled';
-          statusText.style.color = '#6b7280';
+          bannerLabel.textContent = 'Not Configured';
+          bannerInfo.textContent = 'No playlist set';
         }
       }
 
-      if (playlistUrlInput) {
-        playlistUrlInput.value = config.playlistUrl || '';
+      // Update Preview
+      const previewPlaceholder = document.getElementById('video-preview-placeholder');
+      const previewFrame = document.getElementById('video-preview-frame');
+      const previewBadge = document.getElementById('video-preview-badge');
+
+      if (previewPlaceholder && previewFrame && previewBadge) {
+        if (config.playlistId) {
+          previewPlaceholder.style.display = 'none';
+          previewFrame.hidden = false;
+          previewFrame.innerHTML = `<iframe src="https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(config.playlistId)}&autoplay=0&controls=1&rel=0&modestbranding=1" allowfullscreen allow="autoplay; encrypted-media"></iframe>`;
+          previewBadge.textContent = config.isEnabled ? 'Live' : 'Preview Only';
+          previewBadge.className = 'badge ' + (config.isEnabled ? 'serving' : 'waiting');
+        } else {
+          previewPlaceholder.style.display = '';
+          previewFrame.hidden = true;
+          previewFrame.innerHTML = '';
+          previewBadge.textContent = 'No Preview';
+          previewBadge.className = 'badge waiting';
+        }
       }
 
-      if (playlistTitleInput) {
-        playlistTitleInput.value = config.playlistTitle || '';
+      // Update Detail List
+      const detailTitle = document.getElementById('video-detail-title');
+      const detailId = document.getElementById('video-detail-id');
+      const detailStatus = document.getElementById('video-detail-status');
+      const detailUpdated = document.getElementById('video-detail-updated');
+      const detailUpdatedBy = document.getElementById('video-detail-updated-by');
+      const detailUrlLink = document.getElementById('video-detail-url-link');
+      const detailUrlText = document.getElementById('video-detail-url-text');
+
+      if (detailTitle) detailTitle.textContent = config.playlistTitle || '—';
+      if (detailId) detailId.textContent = config.playlistId || '—';
+      if (detailStatus) {
+        if (config.isEnabled && config.playlistId) {
+          detailStatus.innerHTML = '<span class="badge serving">Active & Broadcasting</span>';
+        } else if (config.playlistId && !config.isEnabled) {
+          detailStatus.innerHTML = '<span class="badge follow-up">Paused</span>';
+        } else {
+          detailStatus.innerHTML = '<span class="badge waiting">Not Active</span>';
+        }
+      }
+      if (detailUpdated) {
+        if (config.updatedAt) {
+          try {
+            const date = new Date(config.updatedAt);
+            detailUpdated.textContent = date.toLocaleString('en-PH', {
+              year: 'numeric', month: 'short', day: 'numeric',
+              hour: '2-digit', minute: '2-digit', hour12: true
+            });
+          } catch (e) {
+            detailUpdated.textContent = config.updatedAt;
+          }
+        } else {
+          detailUpdated.textContent = '—';
+        }
+      }
+      if (detailUpdatedBy) detailUpdatedBy.textContent = config.updatedBy || '—';
+      if (detailUrlLink && detailUrlText) {
+        if (config.playlistUrl) {
+          detailUrlLink.href = config.playlistUrl;
+          detailUrlLink.style.display = '';
+          detailUrlText.style.display = 'none';
+        } else {
+          detailUrlLink.style.display = 'none';
+          detailUrlText.style.display = '';
+          detailUrlText.textContent = '—';
+        }
       }
 
-      if (enabledSelect) {
-        enabledSelect.value = config.isEnabled ? 'true' : 'false';
+      // Update Quick Action Buttons
+      const openYoutubeBtn = document.getElementById('video-open-youtube-btn');
+      const copyUrlBtn = document.getElementById('video-copy-url-btn');
+
+      if (openYoutubeBtn) {
+        openYoutubeBtn.disabled = !config.playlistUrl;
+        openYoutubeBtn.onclick = () => {
+          if (config.playlistUrl) window.open(config.playlistUrl, '_blank');
+        };
+      }
+      if (copyUrlBtn) {
+        copyUrlBtn.disabled = !config.playlistUrl;
+        copyUrlBtn.onclick = async () => {
+          if (config.playlistUrl) {
+            try {
+              await navigator.clipboard.writeText(config.playlistUrl);
+              const originalHTML = copyUrlBtn.innerHTML;
+              copyUrlBtn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+              setTimeout(() => { copyUrlBtn.innerHTML = originalHTML; }, 2000);
+            } catch (e) {
+              console.warn('Failed to copy URL:', e);
+            }
+          }
+        };
       }
     }
   } catch (error) {
     console.error('Error loading video config display:', error);
+  }
+}
+
+function initVideoManagement() {
+  // Toggle switch sync with hidden select
+  const enabledToggle = document.getElementById('video-enabled-toggle');
+  const enabledSelect = document.getElementById('video-enabled');
+  const toggleText = document.getElementById('video-toggle-text');
+
+  if (enabledToggle && enabledSelect) {
+    enabledToggle.addEventListener('change', () => {
+      enabledSelect.value = enabledToggle.checked ? 'true' : 'false';
+      if (toggleText) {
+        toggleText.textContent = enabledToggle.checked ? 'Broadcasting' : 'Disabled';
+      }
+    });
+  }
+
+  // Video configuration form — Save & Apply
+  const videoConfigForm = document.getElementById('video-config-form');
+  if (videoConfigForm) {
+    videoConfigForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const saveBtn = document.getElementById('video-save-btn');
+      const originalHTML = saveBtn ? saveBtn.innerHTML : '';
+
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
+      }
+
+      const playlistUrl = document.getElementById('video-playlist-url')?.value || '';
+      const playlistTitle = document.getElementById('video-playlist-title')?.value || '';
+      const isEnabled = document.getElementById('video-enabled')?.value === 'true';
+
+      await postAction('save-video-config', {
+        playlistUrl,
+        playlistTitle,
+        isEnabled
+      });
+
+      // Refresh video config display and library
+      await loadVideoConfigDisplay();
+      await loadPlaylistLibrary();
+
+      if (saveBtn) {
+        saveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Saved!';
+        setTimeout(() => {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = originalHTML;
+        }, 2000);
+      }
+    });
+  }
+
+  // Clear playlist button
+  const clearBtn = document.getElementById('video-clear-btn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', async () => {
+      if (!confirm('Are you sure you want to clear the playlist? This will stop the video on the waiting room display.')) {
+        return;
+      }
+
+      const playlistUrlInput = document.getElementById('video-playlist-url');
+      const playlistTitleInput = document.getElementById('video-playlist-title');
+      const enabledToggle = document.getElementById('video-enabled-toggle');
+      const enabledSelect = document.getElementById('video-enabled');
+      const toggleText = document.getElementById('video-toggle-text');
+
+      if (playlistUrlInput) playlistUrlInput.value = '';
+      if (playlistTitleInput) playlistTitleInput.value = '';
+      if (enabledToggle) enabledToggle.checked = false;
+      if (enabledSelect) enabledSelect.value = 'false';
+      if (toggleText) toggleText.textContent = 'Disabled';
+
+      await postAction('save-video-config', {
+        playlistUrl: '',
+        playlistTitle: '',
+        isEnabled: false
+      });
+
+      await loadVideoConfigDisplay();
+      await loadPlaylistLibrary();
+    });
+  }
+
+  // Add to Library button
+  const addToLibraryBtn = document.getElementById('video-add-to-library-btn');
+  if (addToLibraryBtn) {
+    addToLibraryBtn.addEventListener('click', async () => {
+      const playlistUrl = document.getElementById('video-playlist-url')?.value?.trim() || '';
+      const playlistTitle = document.getElementById('video-playlist-title')?.value?.trim() || '';
+
+      if (!playlistUrl) {
+        alert('Please enter a YouTube playlist URL first.');
+        document.getElementById('video-playlist-url')?.focus();
+        return;
+      }
+
+      const originalHTML = addToLibraryBtn.innerHTML;
+      addToLibraryBtn.disabled = true;
+      addToLibraryBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Adding...';
+
+      try {
+        const apiUrl = '/backend/api_postgres.php';
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'add-to-playlist-library',
+            playlistUrl,
+            playlistTitle: playlistTitle || 'Untitled Playlist'
+          }),
+          cache: 'no-store'
+        });
+
+        const data = await response.json();
+        if (data?.success) {
+          addToLibraryBtn.innerHTML = '<i class="fa-solid fa-check"></i> Added!';
+          await loadPlaylistLibrary();
+        } else {
+          alert(data?.message || 'Failed to add playlist to library.');
+        }
+      } catch (error) {
+        console.error('Error adding to library:', error);
+        alert('Failed to add playlist to library.');
+      }
+
+      setTimeout(() => {
+        addToLibraryBtn.disabled = false;
+        addToLibraryBtn.innerHTML = originalHTML;
+      }, 1500);
+    });
+  }
+
+  // Load video config and playlist library on page load
+  loadVideoConfigDisplay();
+  loadPlaylistLibrary();
+}
+
+// ========== Playlist Library Functions ==========
+
+async function loadPlaylistLibrary() {
+  const libraryList = document.getElementById('video-library-list');
+  const libraryCount = document.getElementById('video-library-count');
+
+  if (!libraryList) return;
+
+  try {
+    const apiUrl = '/backend/api_postgres.php';
+    const [libraryResponse, configResponse] = await Promise.all([
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get-playlist-library' }),
+        cache: 'no-store'
+      }),
+      fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get-video-config' }),
+        cache: 'no-store'
+      })
+    ]);
+
+    const libraryData = await libraryResponse.json();
+    const configData = await configResponse.json();
+
+    const activePlaylistId = configData?.videoConfig?.playlistId || '';
+    const isEnabled = configData?.videoConfig?.isEnabled || false;
+
+    if (!libraryData?.success || !libraryData.library || libraryData.library.length === 0) {
+      if (libraryCount) libraryCount.textContent = '0 playlists';
+      libraryList.innerHTML = `
+        <div class="video-library-empty">
+          <i class="fa-solid fa-folder-open"></i>
+          <p>No playlists in your library yet</p>
+          <small>Add a playlist URL above and click "Add to Library" to get started</small>
+        </div>
+      `;
+      return;
+    }
+
+    const library = libraryData.library;
+    if (libraryCount) libraryCount.textContent = `${library.length} playlist${library.length !== 1 ? 's' : ''}`;
+
+    libraryList.innerHTML = library.map(item => {
+      const isPlaying = activePlaylistId === item.playlistId && isEnabled;
+      const isSet = activePlaylistId === item.playlistId && !isEnabled;
+
+      let addedDate = '';
+      if (item.addedAt) {
+        try {
+          const d = new Date(item.addedAt);
+          addedDate = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+        } catch (e) {
+          addedDate = '';
+        }
+      }
+
+      return `
+        <div class="playlist-library-item ${isPlaying ? 'now-playing' : ''}">
+          <div class="playlist-item-thumbnail">
+            <img src="https://img.youtube.com/vi/default/default.jpg"
+                 onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\\'fa-brands fa-youtube\\'></i>'"
+                 alt="thumbnail" />
+          </div>
+          <div class="playlist-item-info">
+            <div class="playlist-item-title">${escapeHtml(item.playlistTitle)}</div>
+            <div class="playlist-item-meta">
+              <span class="playlist-item-id">${escapeHtml(item.playlistId)}</span>
+              ${addedDate ? `<span class="playlist-item-date">${addedDate}</span>` : ''}
+              ${isPlaying ? '<span class="playlist-item-badge"><i class="fa-solid fa-circle"></i> Now Playing</span>' : ''}
+              ${isSet ? '<span class="playlist-item-badge" style="color:#d97706;background:#fef3c7;border-color:#fde68a;animation:none;"><i class="fa-solid fa-pause"></i> Paused</span>' : ''}
+            </div>
+          </div>
+          <div class="playlist-item-actions">
+            <button class="btn btn-play ${isPlaying ? 'playing' : ''}" type="button"
+                    data-library-action="${isPlaying ? 'stop' : 'play'}"
+                    data-playlist-id="${escapeHtml(item.playlistId)}"
+                    data-playlist-url="${escapeHtml(item.playlistUrl)}"
+                    data-playlist-title="${escapeHtml(item.playlistTitle)}">
+              <i class="fa-solid ${isPlaying ? 'fa-stop' : 'fa-play'}"></i>
+              ${isPlaying ? 'Stop' : 'Play'}
+            </button>
+            <button class="btn btn-secondary" type="button"
+                    data-library-action="open"
+                    data-playlist-url="${escapeHtml(item.playlistUrl)}">
+              <i class="fa-brands fa-youtube"></i>
+            </button>
+            <button class="btn btn-danger" type="button"
+                    data-library-action="delete"
+                    data-library-id="${item.id}"
+                    data-playlist-title="${escapeHtml(item.playlistTitle)}">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Attach library item action handlers via delegation
+    libraryList.onclick = async (event) => {
+      const btn = event.target.closest('button[data-library-action]');
+      if (!btn) return;
+
+      const action = btn.dataset.libraryAction;
+
+      if (action === 'play') {
+        const playlistUrl = btn.dataset.playlistUrl;
+        const playlistTitle = btn.dataset.playlistTitle;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+
+        await postAction('save-video-config', {
+          playlistUrl,
+          playlistTitle,
+          isEnabled: true
+        });
+
+        // Also update the form fields to reflect the now-playing playlist
+        const urlInput = document.getElementById('video-playlist-url');
+        const titleInput = document.getElementById('video-playlist-title');
+        const enabledToggle = document.getElementById('video-enabled-toggle');
+        const enabledSelect = document.getElementById('video-enabled');
+        const toggleText = document.getElementById('video-toggle-text');
+
+        if (urlInput) urlInput.value = playlistUrl;
+        if (titleInput) titleInput.value = playlistTitle;
+        if (enabledToggle) enabledToggle.checked = true;
+        if (enabledSelect) enabledSelect.value = 'true';
+        if (toggleText) toggleText.textContent = 'Broadcasting';
+
+        await loadVideoConfigDisplay();
+        await loadPlaylistLibrary();
+      }
+
+      if (action === 'stop') {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+
+        await postAction('save-video-config', {
+          playlistUrl: btn.dataset.playlistUrl,
+          playlistTitle: btn.dataset.playlistTitle,
+          isEnabled: false
+        });
+
+        const enabledToggle = document.getElementById('video-enabled-toggle');
+        const enabledSelect = document.getElementById('video-enabled');
+        const toggleText = document.getElementById('video-toggle-text');
+        if (enabledToggle) enabledToggle.checked = false;
+        if (enabledSelect) enabledSelect.value = 'false';
+        if (toggleText) toggleText.textContent = 'Disabled';
+
+        await loadVideoConfigDisplay();
+        await loadPlaylistLibrary();
+      }
+
+      if (action === 'open') {
+        const url = btn.dataset.playlistUrl;
+        if (url) window.open(url, '_blank');
+      }
+
+      if (action === 'delete') {
+        const libraryId = btn.dataset.libraryId;
+        const title = btn.dataset.playlistTitle;
+        if (!confirm(`Remove "${title}" from the library?`)) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+
+        try {
+          const apiUrl = '/backend/api_postgres.php';
+          await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'delete-from-playlist-library', id: parseInt(libraryId) }),
+            cache: 'no-store'
+          });
+          await loadPlaylistLibrary();
+        } catch (error) {
+          console.error('Error deleting playlist:', error);
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+        }
+      }
+    };
+
+  } catch (error) {
+    console.error('Error loading playlist library:', error);
+    libraryList.innerHTML = `
+      <div class="video-library-empty">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <p>Failed to load playlist library</p>
+        <small>Please try refreshing the page</small>
+      </div>
+    `;
   }
 }
 
@@ -1882,28 +2327,8 @@ function initAdminPage() {
     });
   }
 
-  // Video configuration form
-  const videoConfigForm = document.getElementById('video-config-form');
-  if (videoConfigForm) {
-    videoConfigForm.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const playlistUrl = document.getElementById('video-playlist-url')?.value || '';
-      const playlistTitle = document.getElementById('video-playlist-title')?.value || '';
-      const isEnabled = document.getElementById('video-enabled')?.value === 'true';
-
-      await postAction('save-video-config', {
-        playlistUrl,
-        playlistTitle,
-        isEnabled
-      });
-
-      // Refresh video config display
-      await loadVideoConfigDisplay();
-    });
-  }
-
-  // Load video config on page load
-  loadVideoConfigDisplay();
+  // Video management panel
+  initVideoManagement();
 
   document.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
@@ -2555,31 +2980,94 @@ function initMessaging() {
 
 // YouTube Playlist Player for Waiting Room
 let youtubePlayer = null;
+let currentLoadedPlaylistId = null;
+let currentPlaylistEnabled = null;
 
 function initYouTubePlayer() {
   const videoConfig = state.videoConfig;
+  const placeholder = document.getElementById('youtube-placeholder');
+  const playerContainer = document.getElementById('youtube-player-container');
+  const subtitle = document.querySelector('.video-card .card-subtitle');
 
   if (!videoConfig || !videoConfig.isEnabled || !videoConfig.playlistId) {
-    // Show placeholder if no playlist configured
-    const placeholder = document.getElementById('youtube-placeholder');
-    const playerDiv = document.getElementById('youtube-player');
+    if (subtitle) subtitle.textContent = 'YouTube playlist';
     if (placeholder) placeholder.hidden = false;
-    if (playerDiv) playerDiv.innerHTML = '';
+    const placeholderText = document.querySelector('.placeholder-text');
+    if (placeholderText) {
+      if (videoConfig && videoConfig.playlistId && !videoConfig.isEnabled) {
+        placeholderText.textContent = 'Broadcasting paused by administrator';
+      } else {
+        placeholderText.textContent = 'No playlist configured';
+      }
+    }
+
+    if (youtubePlayer && typeof youtubePlayer.stopVideo === 'function') {
+      try {
+        youtubePlayer.stopVideo();
+      } catch (e) {}
+    }
+
+    const playerEl = document.getElementById('youtube-player');
+    if (playerEl) {
+      playerEl.style.display = 'none';
+    }
+
+    currentLoadedPlaylistId = null;
+    currentPlaylistEnabled = false;
     return;
   }
 
-  // Hide placeholder and initialize player
-  const placeholder = document.getElementById('youtube-placeholder');
+  // Active playlist configured
+  if (subtitle && videoConfig.playlistTitle) {
+    subtitle.textContent = videoConfig.playlistTitle;
+  }
+
+  // If already playing this playlist, don't restart it on every 2-second poll
+  if (currentLoadedPlaylistId === videoConfig.playlistId && currentPlaylistEnabled === true) {
+    const playerEl = document.getElementById('youtube-player');
+    if (playerEl) playerEl.style.display = '';
+    if (placeholder) placeholder.hidden = true;
+    return;
+  }
+
+  // YouTube API might not be loaded yet
+  if (typeof YT === 'undefined' || typeof YT.Player === 'undefined') {
+    // API not ready yet; onYouTubeIframeAPIReady will invoke this again
+    return;
+  }
+
   if (placeholder) placeholder.hidden = true;
 
-  if (youtubePlayer) {
-    // Update existing player
-    youtubePlayer.loadPlaylist({
-      list: videoConfig.playlistId,
-      listType: 'playlist'
-    });
-  } else {
-    // Create new player
+  // Ensure player element exists and is visible
+  let playerDiv = document.getElementById('youtube-player');
+  if (!playerDiv) {
+    playerDiv = document.createElement('div');
+    playerDiv.id = 'youtube-player';
+    playerDiv.className = 'youtube-player';
+    if (playerContainer) playerContainer.appendChild(playerDiv);
+  }
+  playerDiv.style.display = '';
+
+  if (youtubePlayer && typeof youtubePlayer.loadPlaylist === 'function') {
+    try {
+      youtubePlayer.loadPlaylist({
+        list: videoConfig.playlistId,
+        listType: 'playlist'
+      });
+      currentLoadedPlaylistId = videoConfig.playlistId;
+      currentPlaylistEnabled = true;
+      return;
+    } catch (e) {
+      console.warn('Failed to call loadPlaylist on existing player, recreating:', e);
+      if (typeof youtubePlayer.destroy === 'function') {
+        try { youtubePlayer.destroy(); } catch (err) {}
+      }
+      youtubePlayer = null;
+    }
+  }
+
+  // Create new player
+  try {
     youtubePlayer = new YT.Player('youtube-player', {
       height: '100%',
       width: '100%',
@@ -2593,9 +3081,19 @@ function initYouTubePlayer() {
         'playsinline': 1
       },
       events: {
+        'onReady': (event) => {
+          try {
+            event.target.playVideo();
+          } catch (e) {}
+        },
         'onError': onPlayerError
       }
     });
+
+    currentLoadedPlaylistId = videoConfig.playlistId;
+    currentPlaylistEnabled = true;
+  } catch (err) {
+    console.error('Error creating YouTube player:', err);
   }
 }
 
@@ -2605,7 +3103,7 @@ function onPlayerError(event) {
   const placeholderText = document.querySelector('.placeholder-text');
   if (placeholder && placeholderText) {
     placeholder.hidden = false;
-    placeholderText.textContent = 'Unable to load playlist. Please check the configuration.';
+    placeholderText.textContent = 'Unable to load playlist. Please check YouTube URL/playlist settings.';
   }
 }
 

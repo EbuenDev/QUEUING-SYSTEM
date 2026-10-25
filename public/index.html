@@ -27,7 +27,24 @@
     </header>
 
     <main class="waiting-room-main">
-      <!-- Left Column: Patient Queue Information -->
+      <!-- Left Column: Health Education Video Player (Maximized) -->
+      <section class="video-column">
+        <div class="video-card">
+          <div class="card-header">
+            <h2 class="card-title">Health Education</h2>
+            <span class="card-subtitle">YouTube playlist</span>
+          </div>
+          <div id="youtube-player-container" class="youtube-player-container">
+            <div id="youtube-placeholder" class="youtube-placeholder">
+              <div class="placeholder-icon">📺</div>
+              <div class="placeholder-text">No playlist configured</div>
+            </div>
+            <div id="youtube-player" class="youtube-player"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Patient Queue Information -->
       <section class="queue-column">
         <div class="queue-card now-serving-card">
           <div class="card-label">NOW SERVING</div>
@@ -55,25 +72,8 @@
           <ul id="followup-list" class="waiting-list"></ul>
         </div>
       </section>
-
-      <!-- Right Column: Health Education Video Player -->
-      <section class="video-column">
-        <div class="video-card">
-          <div class="card-header">
-            <h2 class="card-title">Health Education</h2>
-            <span class="card-subtitle">YouTube playlist</span>
-          </div>
-          <div id="youtube-player-container" class="youtube-player-container">
-            <div id="youtube-placeholder" class="youtube-placeholder">
-              <div class="placeholder-icon">📺</div>
-              <div class="placeholder-text">No playlist configured</div>
-            </div>
-            <div id="youtube-player" class="youtube-player"></div>
-          </div>
-        </div>
-      </section>
     </main>
 
-    <script src="assets/app.js?v=4.3"></script>
+    <script src="assets/app.js?v=5.0"></script>
   </body>
 </html>

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RHU II Admin Panel</title>
-    <link rel="stylesheet" href="assets/styles.css?v=4.5" />
+    <link rel="stylesheet" href="assets/styles.css?v=5.0" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
@@ -259,22 +259,151 @@
           <div id="page-video" class="page-section">
             <div class="page-header">
               <h2>Video Management</h2>
-              <p class="page-subtitle">Configure YouTube playlist for waiting room display</p>
+              <p class="page-subtitle">Control the YouTube playlist playing on the waiting room display</p>
             </div>
-            <div class="card">
-              <form id="video-config-form" class="patient-form" method="post" action="">
-                <div class="form-grid">
-                  <input id="video-playlist-url" name="playlistUrl" type="text" placeholder="YouTube Playlist URL (e.g., https://www.youtube.com/playlist?list=...)" />
-                  <input id="video-playlist-title" name="playlistTitle" type="text" placeholder="Playlist Title (optional)" />
-                  <select id="video-enabled" name="isEnabled" aria-label="Enable Video">
-                    <option value="false">Disabled</option>
-                    <option value="true">Enabled</option>
-                  </select>
+
+            <!-- Live Status Banner -->
+            <div class="video-status-banner" id="video-status-banner">
+              <div class="status-banner-left">
+                <span class="status-dot" id="video-status-dot"></span>
+                <span class="status-banner-label" id="video-banner-label">Not Configured</span>
+              </div>
+              <div class="status-banner-right">
+                <span class="status-banner-info" id="video-banner-info">No playlist set</span>
+              </div>
+            </div>
+
+            <!-- Playlist Configuration Card -->
+            <div class="card video-config-card">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-link"></i> Playlist Configuration</h3>
+              </div>
+              <form id="video-config-form" method="post" action="">
+                <div class="video-form-layout">
+                  <div class="video-form-field">
+                    <label for="video-playlist-url" class="video-field-label">YouTube Playlist URL</label>
+                    <div class="video-input-group">
+                      <span class="video-input-icon"><i class="fa-brands fa-youtube"></i></span>
+                      <input id="video-playlist-url" name="playlistUrl" type="url" placeholder="https://www.youtube.com/playlist?list=PLxxxxxx" />
+                    </div>
+                    <small class="video-field-hint">Paste a YouTube playlist URL. The system will extract the playlist ID automatically.</small>
+                  </div>
+                  <div class="video-form-row">
+                    <div class="video-form-field">
+                      <label for="video-playlist-title" class="video-field-label">Display Title</label>
+                      <div class="video-input-group">
+                        <span class="video-input-icon"><i class="fa-solid fa-tag"></i></span>
+                        <input id="video-playlist-title" name="playlistTitle" type="text" placeholder="e.g., Health Education Videos" />
+                      </div>
+                    </div>
+                    <div class="video-form-field">
+                      <label for="video-enabled" class="video-field-label">Broadcast Status</label>
+                      <div class="video-toggle-wrapper">
+                        <label class="video-toggle" for="video-enabled-toggle">
+                          <input type="checkbox" id="video-enabled-toggle" />
+                          <span class="video-toggle-slider"></span>
+                          <span class="video-toggle-label" id="video-toggle-text">Disabled</span>
+                        </label>
+                      </div>
+                      <!-- Hidden select for form compatibility -->
+                      <select id="video-enabled" name="isEnabled" aria-label="Enable Video" hidden>
+                        <option value="false">Disabled</option>
+                        <option value="true">Enabled</option>
+                      </select>
+                    </div>
+                  </div>
                 </div>
-                <button type="submit" class="btn btn-primary">Save Video Configuration</button>
+                <div class="video-form-actions">
+                  <button type="submit" class="btn btn-primary" id="video-save-btn">
+                    <i class="fa-solid fa-floppy-disk"></i> Save & Apply
+                  </button>
+                  <button type="button" class="btn btn-secondary" id="video-clear-btn">
+                    <i class="fa-solid fa-eraser"></i> Clear Playlist
+                  </button>
+                </div>
               </form>
-              <div id="video-config-status" class="muted" style="margin-top: 12px;">
-                <strong>Current Status:</strong> <span id="video-status-text">Not configured</span>
+            </div>
+
+            <!-- Preview & Current Info -->
+            <div class="video-panels-grid">
+              <!-- Live Preview Card -->
+              <div class="card video-preview-card">
+                <div class="card-header">
+                  <h3><i class="fa-solid fa-tv"></i> Waiting Room Preview</h3>
+                  <span class="badge" id="video-preview-badge">No Preview</span>
+                </div>
+                <div class="video-preview-container" id="video-preview-container">
+                  <div class="video-preview-placeholder" id="video-preview-placeholder">
+                    <i class="fa-solid fa-photo-film"></i>
+                    <p>Configure a playlist above to see a preview</p>
+                  </div>
+                  <div id="video-preview-frame" class="video-preview-frame" hidden></div>
+                </div>
+              </div>
+
+              <!-- Playlist Details Card -->
+              <div class="card video-details-card">
+                <div class="card-header">
+                  <h3><i class="fa-solid fa-circle-info"></i> Now Playing Info</h3>
+                </div>
+                <div class="video-detail-list">
+                  <div class="video-detail-item">
+                    <span class="video-detail-label">Title</span>
+                    <span class="video-detail-value" id="video-detail-title">—</span>
+                  </div>
+                  <div class="video-detail-item">
+                    <span class="video-detail-label">Playlist ID</span>
+                    <span class="video-detail-value mono" id="video-detail-id">—</span>
+                  </div>
+                  <div class="video-detail-item">
+                    <span class="video-detail-label">Status</span>
+                    <span class="video-detail-value" id="video-detail-status">
+                      <span class="badge waiting">Not Active</span>
+                    </span>
+                  </div>
+                  <div class="video-detail-item">
+                    <span class="video-detail-label">Last Updated</span>
+                    <span class="video-detail-value" id="video-detail-updated">—</span>
+                  </div>
+                  <div class="video-detail-item">
+                    <span class="video-detail-label">Updated By</span>
+                    <span class="video-detail-value" id="video-detail-updated-by">—</span>
+                  </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="video-quick-actions">
+                  <h4>Quick Actions</h4>
+                  <div class="video-quick-btns">
+                    <button type="button" class="btn btn-secondary" id="video-open-youtube-btn" disabled>
+                      <i class="fa-brands fa-youtube"></i> Open on YouTube
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="video-copy-url-btn" disabled>
+                      <i class="fa-solid fa-copy"></i> Copy URL
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Playlist Library -->
+            <div class="card video-library-card">
+              <div class="card-header">
+                <h3><i class="fa-solid fa-list-ul"></i> Playlist Library</h3>
+                <div class="header-actions">
+                  <button type="button" class="btn btn-primary" id="video-add-to-library-btn">
+                    <i class="fa-solid fa-plus"></i> Add to Library
+                  </button>
+                  <span class="pill" id="video-library-count">0 playlists</span>
+                </div>
+              </div>
+              <p class="video-library-hint"><i class="fa-solid fa-lightbulb"></i> Save playlists to your library, then hit <strong>Play</strong> to broadcast them to the waiting room display.</p>
+              <div id="video-library-list" class="video-library-list">
+                <div class="video-library-empty">
+                  <i class="fa-solid fa-folder-open"></i>
+                  <p>No playlists in your library yet</p>
+                  <small>Add a playlist URL above and click "Add to Library" to get started</small>
+                </div>
               </div>
             </div>
           </div>
@@ -384,6 +513,6 @@
     </div>
 
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
-    <script src="assets/app.js?v=4.5"></script>
+    <script src="assets/app.js?v=5.0"></script>
   </body>
 </html>

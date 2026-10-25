@@ -397,6 +397,17 @@ function loadVideoConfig(?PDO $db): array {
             ];
         }
 
+        // Create table if it does not exist
+        $db->exec("CREATE TABLE IF NOT EXISTS video_config (
+            id INT PRIMARY KEY DEFAULT 1,
+            playlist_id VARCHAR(100),
+            playlist_title VARCHAR(255),
+            playlist_url VARCHAR(500),
+            is_enabled BOOLEAN DEFAULT FALSE,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_by VARCHAR(50)
+        )");
+
         $stmt = $db->prepare("SELECT id, playlist_id, playlist_title, playlist_url, is_enabled, updated_at, updated_by
                              FROM video_config
                              WHERE id = 1");
@@ -480,6 +491,119 @@ function extractYoutubePlaylistId(string $url): ?string {
     }
 
     return null;
+}
+
+// ========== Playlist Library Functions ==========
+
+function loadPlaylistLibrary(?PDO $db): array {
+    try {
+        if ($db === null) {
+            return [];
+        }
+
+        // Create table if it doesn't exist
+        $db->exec("CREATE TABLE IF NOT EXISTS playlist_library (
+            id SERIAL PRIMARY KEY,
+            playlist_id VARCHAR(100) NOT NULL,
+            playlist_title VARCHAR(255) NOT NULL DEFAULT 'Untitled',
+            playlist_url VARCHAR(500) NOT NULL,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            added_by VARCHAR(50) DEFAULT 'admin'
+        )");
+
+        $stmt = $db->prepare("SELECT id, playlist_id, playlist_title, playlist_url, added_at, added_by
+                             FROM playlist_library
+                             ORDER BY added_at DESC");
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        $library = [];
+        foreach ($rows as $row) {
+            $library[] = [
+                'id' => (int)$row['id'],
+                'playlistId' => $row['playlist_id'],
+                'playlistTitle' => $row['playlist_title'],
+                'playlistUrl' => $row['playlist_url'],
+                'addedAt' => $row['added_at'],
+                'addedBy' => $row['added_by']
+            ];
+        }
+
+        return $library;
+    } catch (PDOException $e) {
+        error_log('Error loading playlist library: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function addToPlaylistLibrary(?PDO $db, array $playlist): ?int {
+    try {
+        if ($db === null) {
+            error_log('Database not available - cannot add to playlist library');
+            return null;
+        }
+
+        // Create table if it doesn't exist
+        $db->exec("CREATE TABLE IF NOT EXISTS playlist_library (
+            id SERIAL PRIMARY KEY,
+            playlist_id VARCHAR(100) NOT NULL,
+            playlist_title VARCHAR(255) NOT NULL DEFAULT 'Untitled',
+            playlist_url VARCHAR(500) NOT NULL,
+            added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            added_by VARCHAR(50) DEFAULT 'admin'
+        )");
+
+        // Check if playlist already exists
+        $checkStmt = $db->prepare("SELECT id FROM playlist_library WHERE playlist_id = :playlistId");
+        $checkStmt->execute([':playlistId' => $playlist['playlistId']]);
+        $existing = $checkStmt->fetch();
+
+        if ($existing) {
+            // Update existing entry
+            $stmt = $db->prepare("UPDATE playlist_library
+                                 SET playlist_title = :playlistTitle,
+                                     playlist_url = :playlistUrl,
+                                     added_by = :addedBy
+                                 WHERE playlist_id = :playlistId");
+            $stmt->execute([
+                ':playlistTitle' => $playlist['playlistTitle'],
+                ':playlistUrl' => $playlist['playlistUrl'],
+                ':addedBy' => $playlist['addedBy'],
+                ':playlistId' => $playlist['playlistId']
+            ]);
+            return (int)$existing['id'];
+        }
+
+        $stmt = $db->prepare("INSERT INTO playlist_library (playlist_id, playlist_title, playlist_url, added_by)
+                             VALUES (:playlistId, :playlistTitle, :playlistUrl, :addedBy)
+                             RETURNING id");
+        $stmt->execute([
+            ':playlistId' => $playlist['playlistId'],
+            ':playlistTitle' => $playlist['playlistTitle'],
+            ':playlistUrl' => $playlist['playlistUrl'],
+            ':addedBy' => $playlist['addedBy']
+        ]);
+        $result = $stmt->fetch();
+        return $result ? (int)$result['id'] : null;
+    } catch (PDOException $e) {
+        error_log('Error adding to playlist library: ' . $e->getMessage());
+        throw $e;
+    }
+}
+
+function deleteFromPlaylistLibrary(?PDO $db, int $id): bool {
+    try {
+        if ($db === null) {
+            return false;
+        }
+
+        $stmt = $db->prepare("DELETE FROM playlist_library WHERE id = :id");
+        $stmt->execute([':id' => $id]);
+        return $stmt->rowCount() > 0;
+    } catch (PDOException $e) {
+        error_log('Error deleting from playlist library: ' . $e->getMessage());
+        return false;
+    }
 }
 
 function createNotification(?PDO $db, array $notification): void {
@@ -1355,6 +1479,65 @@ try {
                 jsonResponse(['success' => true, 'message' => 'Video configuration saved successfully']);
             } catch (Exception $e) {
                 jsonResponse(['success' => false, 'message' => 'Failed to save video configuration'], 500);
+            }
+            break;
+
+        case 'get-playlist-library':
+            $library = loadPlaylistLibrary($db);
+            jsonResponse(['success' => true, 'library' => $library]);
+            break;
+
+        case 'add-to-playlist-library':
+            if (!isAdminAuthenticated()) {
+                jsonResponse(['success' => false, 'message' => 'Admin authentication required'], 401);
+                exit;
+            }
+
+            $playlistUrl = trim((string) ($payload['playlistUrl'] ?? ''));
+            $playlistTitle = trim((string) ($payload['playlistTitle'] ?? ''));
+
+            if ($playlistUrl === '') {
+                jsonResponse(['success' => false, 'message' => 'Playlist URL is required'], 400);
+                exit;
+            }
+
+            $playlistId = extractYoutubePlaylistId($playlistUrl);
+            if (!$playlistId) {
+                jsonResponse(['success' => false, 'message' => 'Invalid YouTube playlist URL'], 400);
+                exit;
+            }
+
+            try {
+                $addedBy = $_SESSION['username'] ?? 'admin';
+                $id = addToPlaylistLibrary($db, [
+                    'playlistId' => $playlistId,
+                    'playlistTitle' => $playlistTitle ?: 'Untitled Playlist',
+                    'playlistUrl' => $playlistUrl,
+                    'addedBy' => $addedBy
+                ]);
+                jsonResponse(['success' => true, 'message' => 'Playlist added to library', 'id' => $id]);
+            } catch (Exception $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to add playlist to library'], 500);
+            }
+            break;
+
+        case 'delete-from-playlist-library':
+            if (!isAdminAuthenticated()) {
+                jsonResponse(['success' => false, 'message' => 'Admin authentication required'], 401);
+                exit;
+            }
+
+            $deleteId = (int) ($payload['id'] ?? 0);
+            if ($deleteId <= 0) {
+                jsonResponse(['success' => false, 'message' => 'Invalid playlist ID'], 400);
+                exit;
+            }
+
+            $deleted = deleteFromPlaylistLibrary($db, $deleteId);
+            if ($deleted) {
+                jsonResponse(['success' => true, 'message' => 'Playlist removed from library']);
+            } else {
+                jsonResponse(['success' => false, 'message' => 'Playlist not found'], 404);
             }
             break;
 
