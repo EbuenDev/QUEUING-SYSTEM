@@ -757,6 +757,322 @@ function markNotificationsAsRead(?PDO $db, array $notificationIds): void {
     }
 }
 
+function ensurePrescriptionsTable(?PDO $db): void {
+    if ($db === null) return;
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS yakap_prescriptions (
+            id VARCHAR(50) PRIMARY KEY,
+            rx_number VARCHAR(50) NOT NULL UNIQUE,
+            patient_id VARCHAR(50),
+            patient_name VARCHAR(255) NOT NULL,
+            patient_age INTEGER,
+            patient_sex VARCHAR(20),
+            patient_address VARCHAR(255),
+            phil_health_id VARCHAR(50),
+            patient_classification VARCHAR(30) DEFAULT 'regular',
+            diagnosis TEXT,
+            clinical_notes TEXT,
+            medications TEXT NOT NULL DEFAULT '[]',
+            doctor_name VARCHAR(255) DEFAULT 'Doc. Renz Sale, MD',
+            doctor_prc VARCHAR(50) DEFAULT 'PRC No. 0148921',
+            doctor_ptr VARCHAR(50) DEFAULT 'PTR No. 8392104',
+            doctor_s2 VARCHAR(50),
+            file_name VARCHAR(255),
+            pdf_path TEXT,
+            png_path TEXT,
+            png_paths TEXT,
+            queue_number INTEGER,
+            status VARCHAR(30) DEFAULT 'active',
+            printed_at TIMESTAMP,
+            printed_by VARCHAR(100),
+            dispensed_at TIMESTAMP,
+            dispensed_by VARCHAR(100),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+
+        // Add columns if table already existed without them
+        $db->exec("ALTER TABLE yakap_prescriptions ADD COLUMN IF NOT EXISTS file_name VARCHAR(255)");
+        $db->exec("ALTER TABLE yakap_prescriptions ADD COLUMN IF NOT EXISTS pdf_path TEXT");
+        $db->exec("ALTER TABLE yakap_prescriptions ADD COLUMN IF NOT EXISTS png_path TEXT");
+        $db->exec("ALTER TABLE yakap_prescriptions ADD COLUMN IF NOT EXISTS png_paths TEXT");
+        $db->exec("ALTER TABLE yakap_prescriptions ADD COLUMN IF NOT EXISTS queue_number INTEGER");
+        $db->exec("ALTER TABLE yakap_prescriptions ADD COLUMN IF NOT EXISTS printed_at TIMESTAMP");
+        $db->exec("ALTER TABLE yakap_prescriptions ADD COLUMN IF NOT EXISTS printed_by VARCHAR(100)");
+
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_yakap_prescriptions_rx ON yakap_prescriptions(rx_number)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_yakap_prescriptions_patient ON yakap_prescriptions(patient_name)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_yakap_prescriptions_status ON yakap_prescriptions(status)");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_yakap_prescriptions_created ON yakap_prescriptions(created_at)");
+    } catch (Exception $e) {
+        error_log('Error ensuring prescriptions table: ' . $e->getMessage());
+    }
+}
+
+function loadPrescriptionsFromDatabase(?PDO $db): array {
+    try {
+        if ($db === null) {
+            return [];
+        }
+        ensurePrescriptionsTable($db);
+
+        $stmt = $db->prepare("SELECT id, rx_number, patient_id, patient_name, patient_age, patient_sex,
+                                     patient_address, phil_health_id, patient_classification, diagnosis,
+                                     clinical_notes, medications, doctor_name, doctor_prc, doctor_ptr,
+                                     doctor_s2, file_name, pdf_path, png_path, png_paths, queue_number,
+                                     status, printed_at, printed_by, dispensed_at, dispensed_by, created_at, updated_at
+                              FROM yakap_prescriptions
+                              ORDER BY created_at DESC");
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        return array_map(function($row) {
+            $meds = json_decode($row['medications'] ?? '[]', true);
+            if (!is_array($meds)) $meds = [];
+            $pngPages = json_decode($row['png_paths'] ?? '[]', true);
+            if (!is_array($pngPages)) {
+                $pngPages = !empty($row['png_path']) ? [$row['png_path']] : [];
+            }
+            return [
+                'id' => $row['id'],
+                'rxNumber' => $row['rx_number'],
+                'patientId' => $row['patient_id'] ?? '',
+                'patientName' => $row['patient_name'],
+                'patientAge' => $row['patient_age'] ? (int)$row['patient_age'] : null,
+                'patientSex' => $row['patient_sex'] ?? '',
+                'patientAddress' => $row['patient_address'] ?? '',
+                'philHealthId' => $row['phil_health_id'] ?? '',
+                'patientClassification' => $row['patient_classification'] ?? 'regular',
+                'diagnosis' => $row['diagnosis'] ?? '',
+                'clinicalNotes' => $row['clinical_notes'] ?? '',
+                'medications' => $meds,
+                'doctorName' => $row['doctor_name'] ?? 'Doc. Renz Sale, MD',
+                'doctorPrc' => $row['doctor_prc'] ?? 'PRC No. 0148921',
+                'doctorPtr' => $row['doctor_ptr'] ?? 'PTR No. 8392104',
+                'doctorS2' => $row['doctor_s2'] ?? '',
+                'fileName' => $row['file_name'] ?? '',
+                'pdfPath' => $row['pdf_path'] ?? '',
+                'pngPath' => $row['png_path'] ?? '',
+                'pngPaths' => $pngPages,
+                'queueNumber' => !empty($row['queue_number']) ? (int)$row['queue_number'] : null,
+                'status' => $row['status'] ?? 'active',
+                'printedAt' => $row['printed_at'] ?? null,
+                'printedBy' => $row['printed_by'] ?? null,
+                'dispensedAt' => $row['dispensed_at'] ?? null,
+                'dispensedBy' => $row['dispensed_by'] ?? null,
+                'createdAt' => $row['created_at'],
+                'updatedAt' => $row['updated_at']
+            ];
+        }, $rows);
+    } catch (PDOException $e) {
+        error_log('Error loading prescriptions: ' . $e->getMessage());
+        return [];
+    }
+}
+
+function uploadPrescriptionPdf(?PDO $db, array $payload): array {
+    ensurePrescriptionsTable($db);
+
+    $id = 'rx_' . uniqid() . bin2hex(random_bytes(2));
+    $rxNumber = 'YK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+
+    $patientName = trim((string)($payload['patientName'] ?? ''));
+    if ($patientName === '') {
+        $patientName = 'Patient ' . date('h:i A');
+    }
+    $queueNumber = !empty($payload['queueNumber']) ? (int)$payload['queueNumber'] : null;
+    $notes = trim((string)($payload['notes'] ?? ''));
+    $fileName = trim((string)($payload['fileName'] ?? 'yakap_prescription.pdf'));
+    $doctorName = trim((string)($payload['doctorName'] ?? 'Doc. Renz Sale, MD'));
+
+    // Upload folder inside public/uploads/prescriptions
+    $uploadDir = __DIR__ . '/../public/uploads/prescriptions';
+    if (!is_dir($uploadDir)) {
+        @mkdir($uploadDir, 0777, true);
+    }
+
+    $pdfPath = '';
+    if (!empty($payload['pdfBase64'])) {
+        $pdfData = $payload['pdfBase64'];
+        if (strpos($pdfData, ';base64,') !== false) {
+            $pdfData = explode(';base64,', $pdfData)[1];
+        }
+        $decodedPdf = base64_decode($pdfData);
+        if ($decodedPdf !== false) {
+            $pdfFileName = $id . '.pdf';
+            @file_put_contents($uploadDir . '/' . $pdfFileName, $decodedPdf);
+            $pdfPath = 'uploads/prescriptions/' . $pdfFileName;
+        }
+    }
+
+    $pngPaths = [];
+    $rawPngPages = $payload['pngPages'] ?? [];
+    if (is_array($rawPngPages)) {
+        foreach ($rawPngPages as $idx => $pngDataUrl) {
+            if (empty($pngDataUrl)) continue;
+            $pngData = $pngDataUrl;
+            if (strpos($pngData, ';base64,') !== false) {
+                $pngData = explode(';base64,', $pngData)[1];
+            }
+            $decodedPng = base64_decode($pngData);
+            if ($decodedPng !== false) {
+                $pngFileName = $id . '_page_' . ($idx + 1) . '.png';
+                @file_put_contents($uploadDir . '/' . $pngFileName, $decodedPng);
+                $pngPaths[] = 'uploads/prescriptions/' . $pngFileName;
+            }
+        }
+    }
+
+    $primaryPng = !empty($pngPaths) ? $pngPaths[0] : '';
+
+    if ($db !== null) {
+        $stmt = $db->prepare("INSERT INTO yakap_prescriptions
+            (id, rx_number, patient_name, queue_number, clinical_notes, file_name,
+             pdf_path, png_path, png_paths, doctor_name, status, created_at, updated_at)
+            VALUES
+            (:id, :rx_number, :patient_name, :queue_number, :clinical_notes, :file_name,
+             :pdf_path, :png_path, :png_paths, :doctor_name, 'active', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)");
+
+        $stmt->execute([
+            ':id' => $id,
+            ':rx_number' => $rxNumber,
+            ':patient_name' => $patientName,
+            ':queue_number' => $queueNumber,
+            ':clinical_notes' => $notes,
+            ':file_name' => $fileName,
+            ':pdf_path' => $pdfPath,
+            ':png_path' => $primaryPng,
+            ':png_paths' => json_encode($pngPaths),
+            ':doctor_name' => $doctorName
+        ]);
+    }
+
+    return [
+        'id' => $id,
+        'rxNumber' => $rxNumber,
+        'patientName' => $patientName,
+        'queueNumber' => $queueNumber,
+        'clinicalNotes' => $notes,
+        'fileName' => $fileName,
+        'pdfPath' => $pdfPath,
+        'pngPath' => $primaryPng,
+        'pngPaths' => $pngPaths,
+        'doctorName' => $doctorName,
+        'status' => 'active',
+        'createdAt' => date('Y-m-d H:i:s')
+    ];
+}
+
+function markPrescriptionPrinted(?PDO $db, string $id, ?string $printedBy = null): bool {
+    if ($db === null) return false;
+    ensurePrescriptionsTable($db);
+    $stmt = $db->prepare("UPDATE yakap_prescriptions
+                         SET status = 'printed', printed_at = CURRENT_TIMESTAMP, printed_by = :printedBy, updated_at = CURRENT_TIMESTAMP
+                         WHERE id = :id");
+    return $stmt->execute([
+        ':id' => $id,
+        ':printedBy' => $printedBy ?: ($_SESSION['username'] ?? 'Admin')
+    ]);
+}
+
+function savePrescriptionToDatabase(?PDO $db, array $rx): array {
+    if ($db === null) {
+        throw new Exception('Database unavailable');
+    }
+    ensurePrescriptionsTable($db);
+
+    $id = trim($rx['id'] ?? '');
+    if ($id === '') {
+        $id = 'rx_' . uniqid() . bin2hex(random_bytes(2));
+    }
+
+    $rxNumber = trim($rx['rxNumber'] ?? '');
+    if ($rxNumber === '') {
+        $rxNumber = 'YK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+    }
+
+    $medications = $rx['medications'] ?? [];
+    $medsJson = is_string($medications) ? $medications : json_encode($medications);
+
+    $stmt = $db->prepare("INSERT INTO yakap_prescriptions
+        (id, rx_number, patient_id, patient_name, patient_age, patient_sex, patient_address,
+         phil_health_id, patient_classification, diagnosis, clinical_notes, medications,
+         doctor_name, doctor_prc, doctor_ptr, doctor_s2, status, created_at, updated_at)
+        VALUES
+        (:id, :rx_number, :patient_id, :patient_name, :patient_age, :patient_sex, :patient_address,
+         :phil_health_id, :patient_classification, :diagnosis, :clinical_notes, :medications,
+         :doctor_name, :doctor_prc, :doctor_ptr, :doctor_s2, :status, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        ON CONFLICT (id) DO UPDATE
+        SET patient_name = EXCLUDED.patient_name,
+            patient_age = EXCLUDED.patient_age,
+            patient_sex = EXCLUDED.patient_sex,
+            patient_address = EXCLUDED.patient_address,
+            phil_health_id = EXCLUDED.phil_health_id,
+            patient_classification = EXCLUDED.patient_classification,
+            diagnosis = EXCLUDED.diagnosis,
+            clinical_notes = EXCLUDED.clinical_notes,
+            medications = EXCLUDED.medications,
+            doctor_name = EXCLUDED.doctor_name,
+            doctor_prc = EXCLUDED.doctor_prc,
+            doctor_ptr = EXCLUDED.doctor_ptr,
+            doctor_s2 = EXCLUDED.doctor_s2,
+            updated_at = CURRENT_TIMESTAMP
+        RETURNING id, rx_number, patient_name, diagnosis, status, created_at");
+
+    $stmt->execute([
+        ':id' => $id,
+        ':rx_number' => $rxNumber,
+        ':patient_id' => $rx['patientId'] ?? '',
+        ':patient_name' => $rx['patientName'] ?? 'Unnamed Patient',
+        ':patient_age' => !empty($rx['patientAge']) ? (int)$rx['patientAge'] : null,
+        ':patient_sex' => $rx['patientSex'] ?? '',
+        ':patient_address' => $rx['patientAddress'] ?? '',
+        ':phil_health_id' => $rx['philHealthId'] ?? '',
+        ':patient_classification' => $rx['patientClassification'] ?? 'regular',
+        ':diagnosis' => $rx['diagnosis'] ?? '',
+        ':clinical_notes' => $rx['clinicalNotes'] ?? '',
+        ':medications' => $medsJson,
+        ':doctor_name' => $rx['doctorName'] ?? 'Doc. Renz Sale, MD',
+        ':doctor_prc' => $rx['doctorPrc'] ?? 'PRC No. 0148921',
+        ':doctor_ptr' => $rx['doctorPtr'] ?? 'PTR No. 8392104',
+        ':doctor_s2' => $rx['doctorS2'] ?? '',
+        ':status' => $rx['status'] ?? 'active'
+    ]);
+
+    $saved = $stmt->fetch();
+    return [
+        'id' => $saved['id'] ?? $id,
+        'rxNumber' => $saved['rx_number'] ?? $rxNumber,
+        'patientName' => $saved['patient_name'] ?? ($rx['patientName'] ?? ''),
+        'status' => $saved['status'] ?? 'active',
+        'createdAt' => $saved['created_at'] ?? date('Y-m-d H:i:s')
+    ];
+}
+
+function updatePrescriptionStatusInDatabase(?PDO $db, string $id, string $status, ?string $dispensedBy = null): bool {
+    if ($db === null) return false;
+    ensurePrescriptionsTable($db);
+
+    $sql = "UPDATE yakap_prescriptions SET status = :status, updated_at = CURRENT_TIMESTAMP";
+    $params = [':id' => $id, ':status' => $status];
+
+    if ($status === 'dispensed') {
+        $sql .= ", dispensed_at = CURRENT_TIMESTAMP, dispensed_by = :dispensedBy";
+        $params[':dispensedBy'] = $dispensedBy ?: ($_SESSION['username'] ?? 'Pharmacy Admin');
+    }
+
+    $sql .= " WHERE id = :id";
+    $stmt = $db->prepare($sql);
+    return $stmt->execute($params);
+}
+
+function deletePrescriptionFromDatabase(?PDO $db, string $id): bool {
+    if ($db === null) return false;
+    ensurePrescriptionsTable($db);
+    $stmt = $db->prepare("DELETE FROM yakap_prescriptions WHERE id = :id");
+    return $stmt->execute([':id' => $id]);
+}
+
 function jsonResponse(array $payload, int $status = 200): void {
     http_response_code($status);
     echo json_encode($payload);
@@ -797,8 +1113,9 @@ if ($method === 'GET') {
 
     $messages = loadMessagesFromDatabase($db, $userRole);
     $unreadCount = getUnreadMessageCount($db, $userRole);
+    $prescriptions = loadPrescriptionsFromDatabase($db);
 
-    jsonResponse(['success' => true, 'state' => $state, 'messages' => $messages, 'unreadCount' => $unreadCount]);
+    jsonResponse(['success' => true, 'state' => $state, 'messages' => $messages, 'unreadCount' => $unreadCount, 'prescriptions' => $prescriptions]);
     exit;
 }
 
@@ -815,7 +1132,7 @@ if (!is_array($payload)) {
 
 $action = $payload['action'] ?? '';
 $requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
-$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read', 'send-message', 'poll-messages', 'mark-messages-read', 'cleanup-messages'], true);
+$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read', 'send-message', 'poll-messages', 'mark-messages-read', 'cleanup-messages', 'save-prescription', 'update-prescription-status', 'delete-prescription', 'get-prescriptions', 'upload-prescription-pdf', 'mark-prescription-printed'], true);
 $requiresSuperAdminAuth = in_array($action, ['create-user', 'list-users', 'update-user', 'delete-user'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
@@ -1733,6 +2050,95 @@ try {
                 jsonResponse(['success' => true, 'message' => 'Playlist removed from library']);
             } else {
                 jsonResponse(['success' => false, 'message' => 'Playlist not found'], 404);
+            }
+            break;
+
+        case 'get-prescriptions':
+            $prescriptions = loadPrescriptionsFromDatabase($db);
+            jsonResponse(['success' => true, 'prescriptions' => $prescriptions]);
+            break;
+
+        case 'save-prescription':
+            $rxData = $payload['prescription'] ?? [];
+            if (empty($rxData) || empty($rxData['patientName'])) {
+                jsonResponse(['success' => false, 'message' => 'Patient name is required'], 400);
+                exit;
+            }
+            try {
+                $saved = savePrescriptionToDatabase($db, $rxData);
+                $allPrescriptions = loadPrescriptionsFromDatabase($db);
+                jsonResponse(['success' => true, 'message' => 'Prescription saved successfully', 'prescription' => $saved, 'prescriptions' => $allPrescriptions]);
+            } catch (Exception $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to save prescription: ' . $e->getMessage()], 500);
+            }
+            break;
+
+        case 'update-prescription-status':
+            $rxId = trim((string)($payload['id'] ?? ''));
+            $status = trim((string)($payload['status'] ?? 'active'));
+            $dispensedBy = trim((string)($payload['dispensedBy'] ?? ''));
+            if ($rxId === '') {
+                jsonResponse(['success' => false, 'message' => 'Prescription ID required'], 400);
+                exit;
+            }
+            try {
+                updatePrescriptionStatusInDatabase($db, $rxId, $status, $dispensedBy);
+                $allPrescriptions = loadPrescriptionsFromDatabase($db);
+                jsonResponse(['success' => true, 'message' => 'Status updated successfully', 'prescriptions' => $allPrescriptions]);
+            } catch (Exception $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to update prescription status'], 500);
+            }
+            break;
+
+        case 'delete-prescription':
+            $rxId = trim((string)($payload['id'] ?? ''));
+            if ($rxId === '') {
+                jsonResponse(['success' => false, 'message' => 'Prescription ID required'], 400);
+                exit;
+            }
+            try {
+                deletePrescriptionFromDatabase($db, $rxId);
+                $allPrescriptions = loadPrescriptionsFromDatabase($db);
+                jsonResponse(['success' => true, 'message' => 'Prescription deleted successfully', 'prescriptions' => $allPrescriptions]);
+            } catch (Exception $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to delete prescription'], 500);
+            }
+            break;
+
+        case 'upload-prescription-pdf':
+            $rawPngPages = $payload['pngPages'] ?? [];
+            if (empty($rawPngPages) && empty($payload['pdfBase64'])) {
+                jsonResponse(['success' => false, 'message' => 'No PDF or converted PNG pages received'], 400);
+                exit;
+            }
+            try {
+                $savedRx = uploadPrescriptionPdf($db, $payload);
+                $allPrescriptions = loadPrescriptionsFromDatabase($db);
+                jsonResponse([
+                    'success' => true,
+                    'message' => 'Prescription uploaded and converted successfully',
+                    'prescription' => $savedRx,
+                    'prescriptions' => $allPrescriptions
+                ]);
+            } catch (Exception $e) {
+                error_log('Error uploading prescription: ' . $e->getMessage());
+                jsonResponse(['success' => false, 'message' => 'Failed to upload prescription: ' . $e->getMessage()], 500);
+            }
+            break;
+
+        case 'mark-prescription-printed':
+            $rxId = trim((string)($payload['id'] ?? ''));
+            $printedBy = trim((string)($payload['printedBy'] ?? ''));
+            if ($rxId === '') {
+                jsonResponse(['success' => false, 'message' => 'Prescription ID required'], 400);
+                exit;
+            }
+            try {
+                markPrescriptionPrinted($db, $rxId, $printedBy);
+                $allPrescriptions = loadPrescriptionsFromDatabase($db);
+                jsonResponse(['success' => true, 'message' => 'Prescription marked as printed', 'prescriptions' => $allPrescriptions]);
+            } catch (Exception $e) {
+                jsonResponse(['success' => false, 'message' => 'Failed to mark as printed'], 500);
             }
             break;
 

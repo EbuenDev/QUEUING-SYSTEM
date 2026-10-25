@@ -9,6 +9,7 @@
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="assets/pdf.min.js"></script>
   </head>
   <body class="admin-body">
     <!-- Top Navigation Bar -->
@@ -85,6 +86,10 @@
           <button class="nav-item" data-page="history">
             <span class="nav-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
             <span class="nav-label">Consultation History</span>
+          </button>
+          <button class="nav-item" data-page="yakap-prescription">
+            <span class="nav-icon"><i class="fa-solid fa-file-prescription"></i></span>
+            <span class="nav-label">YAKAP PRESCRIPTION</span>
           </button>
         </nav>
         <div class="sidebar-footer">
@@ -203,6 +208,7 @@
                 <button id="doctor-recall-btn" class="btn btn-secondary" type="button"><i class="fa-solid fa-bullhorn"></i> Recall</button>
                 <button id="doctor-skip-btn" class="btn btn-warning" type="button"><i class="fa-solid fa-forward"></i> Skip</button>
                 <button id="doctor-followup-btn" class="btn btn-info" type="button"><i class="fa-solid fa-arrows-rotate"></i> Send to Follow-up</button>
+                <button id="doctor-prescribe-btn" class="btn btn-primary" type="button" style="background: linear-gradient(135deg, #0284c7, #0369a1);" title="Write Yakap Prescription"><i class="fa-solid fa-file-prescription"></i> Prescribe Yakap</button>
               </div>
             </div>
 
@@ -278,6 +284,153 @@
             </div>
           </div>
 
+          <!-- YAKAP Prescription Page (Doctor: Drag & Drop PDF) -->
+          <div id="page-yakap-prescription" class="page-section">
+            <div class="page-header yakap-header-banner">
+              <div class="yakap-header-title-wrap">
+                <div class="yakap-badge-pill">
+                  <i class="fa-solid fa-file-pdf"></i>
+                  <span>PDF e-Prescription Uploader</span>
+                </div>
+                <h2>YAKAP PRESCRIPTION</h2>
+                <p class="page-subtitle">Drag & drop your official YAKAP Prescription PDF. It will automatically convert to PNG and send directly to Admin/Pharmacy for Half A4 Landscape printing.</p>
+              </div>
+              <div class="yakap-header-actions">
+                <div id="doctor-serving-badge" class="yakap-serving-indicator">
+                  <i class="fa-solid fa-user-doctor"></i>
+                  <span id="doctor-serving-text">No active patient serving</span>
+                  <button type="button" id="btn-use-serving-patient" class="btn btn-sm btn-outline-light" title="Link to current patient">
+                    <i class="fa-solid fa-link"></i> Link Patient
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Drag & Drop PDF Upload Card -->
+            <div class="card yakap-upload-card">
+              <div class="card-header">
+                <div class="yakap-section-title">
+                  <i class="fa-solid fa-cloud-arrow-up"></i>
+                  <h3>Upload YAKAP Prescription (PDF Only)</h3>
+                </div>
+                <span class="pill pill-info"><i class="fa-solid fa-circle-info"></i> Strictly .PDF only</span>
+              </div>
+
+              <!-- Drag and Drop Dropzone -->
+              <div id="yakap-dropzone" class="yakap-dropzone" tabindex="0" role="button" aria-label="Drag and drop PDF file here or click to browse">
+                <input type="file" id="yakap-pdf-file-input" accept="application/pdf,.pdf" hidden />
+                <div class="dropzone-content">
+                  <div class="dropzone-icon-wrap">
+                    <i class="fa-solid fa-file-pdf"></i>
+                  </div>
+                  <h4>Drag and drop YAKAP Prescription PDF here</h4>
+                  <p class="dropzone-hint">Strictly PDF files only — Max 10MB</p>
+                  <div class="dropzone-or"><span>OR</span></div>
+                  <button type="button" id="btn-browse-pdf" class="btn btn-primary dropzone-browse-btn">
+                    <i class="fa-solid fa-folder-open"></i> Browse PDF File
+                  </button>
+                </div>
+              </div>
+
+              <!-- Error alert for non-PDF files -->
+              <div id="yakap-drop-error" class="yakap-alert yakap-alert-danger" hidden>
+                <i class="fa-solid fa-circle-exclamation"></i>
+                <span id="yakap-drop-error-text">Only PDF files are allowed! Please drop a valid .pdf file.</span>
+              </div>
+
+              <!-- Selected File & Conversion Progress Container -->
+              <div id="yakap-file-processing" class="yakap-file-processing" hidden>
+                <div class="processing-file-bar">
+                  <div class="file-icon-box">
+                    <i class="fa-solid fa-file-pdf"></i>
+                  </div>
+                  <div class="file-meta-info">
+                    <h4 id="yakap-file-name">prescription.pdf</h4>
+                    <span id="yakap-file-details">0 KB • Calculating...</span>
+                  </div>
+                  <div class="file-actions">
+                    <button type="button" id="btn-remove-selected-pdf" class="chat-tool-btn danger" title="Remove PDF">
+                      <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Conversion status banner -->
+                <div id="yakap-conversion-status" class="yakap-conversion-status converting">
+                  <i class="fa-solid fa-spinner fa-spin"></i>
+                  <span id="yakap-conversion-text">Converting PDF pages to high-resolution PNG for printing...</span>
+                </div>
+
+                <!-- Patient Association & Notes Form -->
+                <div class="yakap-meta-form-grid">
+                  <div class="form-group">
+                    <label for="doctor-prescription-patient">Patient Name <span class="req">*</span></label>
+                    <input type="text" id="doctor-prescription-patient" placeholder="e.g. Juan Dela Cruz" required autocomplete="off" />
+                  </div>
+                  <div class="form-group">
+                    <label for="doctor-prescription-queue">Queue # (Optional)</label>
+                    <input type="number" id="doctor-prescription-queue" placeholder="e.g. 5" min="1" />
+                  </div>
+                  <div class="form-group flex-2">
+                    <label for="doctor-prescription-notes">Pharmacy / Dispensing Notes (Optional)</label>
+                    <input type="text" id="doctor-prescription-notes" placeholder="e.g. 1 week antibiotic therapy, please counsel patient" />
+                  </div>
+                </div>
+
+                <!-- Converted PNG Preview Container -->
+                <div class="yakap-preview-wrapper">
+                  <div class="preview-header">
+                    <h4><i class="fa-solid fa-image"></i> Converted PNG Preview (Ready for Half-A4 Landscape Print)</h4>
+                    <span id="yakap-page-counter" class="pill">Page 1 of 1</span>
+                  </div>
+                  <div id="yakap-png-preview-container" class="yakap-png-preview-container">
+                    <!-- Rendered PNG image injected here -->
+                  </div>
+                </div>
+
+                <!-- Upload / Send to Admin Toolbar -->
+                <div class="yakap-upload-actions">
+                  <button type="button" id="btn-send-prescription-admin" class="btn btn-success btn-lg">
+                    <i class="fa-solid fa-paper-plane"></i> Send Converted PNG to Admin
+                  </button>
+                  <button type="button" id="btn-cancel-pdf-upload" class="btn btn-secondary">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Doctor Uploaded Prescriptions History -->
+            <div class="card yakap-history-card">
+              <div class="card-header">
+                <div class="yakap-section-title">
+                  <i class="fa-solid fa-clock-rotate-left"></i>
+                  <h3>Sent Prescriptions Today</h3>
+                </div>
+                <span id="doctor-rx-count-pill" class="pill">0 sent</span>
+              </div>
+              <div class="queue-table-wrap">
+                <table class="queue-table">
+                  <thead>
+                    <tr>
+                      <th>Preview</th>
+                      <th>Rx Number</th>
+                      <th>Patient Name</th>
+                      <th>Queue #</th>
+                      <th>PDF File</th>
+                      <th>Sent Time</th>
+                      <th>Admin Status</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="doctor-prescriptions-table-body">
+                    <!-- Dynamic doctor sent history -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
           <!-- Modals (Hidden by default) -->
           <div id="edit-history-modal" class="card edit-modal" hidden>
             <h3>Edit Recent Checkup</h3>
@@ -323,6 +476,26 @@
         <p class="doctor-notification-message" id="notification-message">A new patient has been added to the queue.</p>
       </div>
       <button id="notification-close" class="doctor-notification-close" type="button">&times;</button>
+    </div>
+
+    <!-- Full Image Viewer Modal -->
+    <div id="yakap-image-view-modal" class="modern-modal-overlay" hidden aria-hidden="true">
+      <div class="yakap-view-dialog" role="dialog" aria-modal="true">
+        <div class="yakap-view-header">
+          <h4 id="yakap-view-title"><i class="fa-solid fa-image"></i> Converted PNG Prescription Preview</h4>
+          <div class="yakap-view-actions">
+            <a id="btn-download-rx-png" class="btn btn-sm btn-outline-light" download="yakap_prescription.png" href="#">
+              <i class="fa-solid fa-download"></i> Download PNG
+            </a>
+            <button type="button" id="btn-close-view-modal" class="chat-tool-btn close-btn" title="Close">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+        <div class="yakap-view-body">
+          <img id="yakap-view-img" src="" alt="Full Prescription" />
+        </div>
+      </div>
     </div>
 
     <!-- Modern Logout Confirmation Modal -->

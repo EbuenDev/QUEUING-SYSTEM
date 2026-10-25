@@ -4,6 +4,7 @@ let state = {
   consultationHistory: [],
   messages: [],
   unreadCount: 0,
+  prescriptions: [],
   videoConfig: {
     id: 1,
     playlistId: '',
@@ -383,11 +384,27 @@ function initRealtimeSync() {
         }
       } else if (event.data?.type === 'video-command') {
         processIncomingVideoCommand(event.data);
+      } else if (event.data?.type === 'yakap-prescriptions-update') {
+        if (Array.isArray(event.data.prescriptions)) {
+          syncPrescriptionsFromBackend(event.data.prescriptions);
+        }
       }
     });
   }
 
   window.addEventListener('storage', (event) => {
+    if (event.key === 'rhu-prescriptions-sync' && event.newValue) {
+      try {
+        const payload = JSON.parse(event.newValue);
+        if (Array.isArray(payload?.prescriptions)) {
+          syncPrescriptionsFromBackend(payload.prescriptions);
+        }
+      } catch (e) {
+        console.warn('Error syncing prescriptions from storage', e);
+      }
+      return;
+    }
+
     if (event.key === 'queue-video-command' && event.newValue) {
       try {
         const payload = JSON.parse(event.newValue);
@@ -454,10 +471,12 @@ function applyNewQueueState(newState) {
   if (!newState || typeof newState !== 'object') return;
   const currentMessages = Array.isArray(state?.messages) ? state.messages : [];
   const currentUnread = typeof state?.unreadCount === 'number' ? state.unreadCount : 0;
+  const currentPrescriptions = Array.isArray(state?.prescriptions) ? state.prescriptions : [];
   state = {
     ...newState,
     messages: currentMessages,
-    unreadCount: currentUnread
+    unreadCount: currentUnread,
+    prescriptions: Array.isArray(newState.prescriptions) ? newState.prescriptions : currentPrescriptions
   };
 }
 
@@ -472,6 +491,9 @@ async function fetchState() {
     if (data?.success && data.state) {
       applyNewQueueState(data.state);
       syncMessagesFromBackend(data.messages || [], data.unreadCount || 0);
+      if (Array.isArray(data.prescriptions)) {
+        syncPrescriptionsFromBackend(data.prescriptions);
+      }
       render();
       checkForNewPatients();
       updateMessageBadge();
@@ -1787,6 +1809,14 @@ function render() {
 
   // Check for new patients on doctor page
   checkForNewPatients();
+
+  // Render Yakap Prescriptions if present on page
+  if (document.getElementById('doctor-prescriptions-table-body') || document.getElementById('yakap-dropzone')) {
+    renderDoctorPrescriptions();
+  }
+  if (document.getElementById('admin-yakap-prescriptions-table-body')) {
+    renderAdminPrescriptions();
+  }
 }
 
 function updateRemotePauseUI(isPaused) {
@@ -2640,6 +2670,9 @@ function initAdminPage() {
       }
     }
   });
+
+  // Initialize Admin YAKAP Prescriptions Desk
+  initAdminYakapPrescription();
 }
 
 function initBhwPage() {
@@ -2785,6 +2818,9 @@ function initDoctorPage() {
       postAction('call-followup', { id });
     }
   });
+
+  // Initialize Doctor YAKAP Prescriptions Feature
+  initDoctorYakapPrescription();
 }
 
 function updateLiveClock() {
@@ -4260,6 +4296,17 @@ function initAdminNavigation() {
           section.classList.add('active');
         }
       });
+
+      // Special handling when navigating to YAKAP Prescription tab
+      if (targetPage === 'yakap-prescription') {
+        if (document.getElementById('doctor-prescriptions-table-body')) {
+          updateDoctorServingBadge();
+          renderDoctorPrescriptions();
+        }
+        if (document.getElementById('admin-yakap-prescriptions-table-body')) {
+          renderAdminPrescriptions();
+        }
+      }
     });
   });
 }
@@ -4458,5 +4505,1018 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
     }
+
+    // Auto-initialize Yakap features on DOMContentLoaded if elements exist
+    if (document.getElementById('yakap-dropzone') || document.getElementById('doctor-prescriptions-table-body')) {
+      initDoctorYakapPrescription();
+    }
+    if (document.getElementById('admin-yakap-prescriptions-table-body')) {
+      initAdminYakapPrescription();
+    }
   }
 });
+
+// ============================================================================
+// YAKAP PRESCRIPTION SYSTEM (Doctor Drag & Drop PDF -> PNG -> Admin Half-A4 Print)
+// ============================================================================
+
+let yakapSelectedPdfFile = null;
+let yakapConvertedPngPages = [];
+let yakapCurrentPrintingRxId = null;
+
+/**
+ * Broadcasts prescription state updates to all open windows/tabs and stores in localStorage
+ */
+function broadcastPrescriptions(prescriptions) {
+  if (updateChannel) {
+    try {
+      updateChannel.postMessage({ type: 'yakap-prescriptions-update', prescriptions });
+    } catch (e) {
+      console.warn('BroadcastChannel yakap update error:', e);
+    }
+  }
+  try {
+    localStorage.setItem('rhu-prescriptions-sync', JSON.stringify({ prescriptions, timestamp: Date.now() }));
+    localStorage.setItem('rhu-prescriptions-event', String(Date.now()));
+  } catch (e) {
+    console.warn('localStorage yakap update error:', e);
+  }
+}
+
+/**
+ * Synchronizes prescriptions into local state and triggers re-renders
+ */
+function syncPrescriptionsFromBackend(prescriptions) {
+  if (!Array.isArray(prescriptions)) return;
+  state.prescriptions = prescriptions;
+
+  try {
+    localStorage.setItem('rhu_yakap_prescriptions_cache', JSON.stringify(prescriptions));
+  } catch (e) {}
+
+  if (document.getElementById('doctor-prescriptions-table-body')) {
+    renderDoctorPrescriptions();
+  }
+  if (document.getElementById('admin-yakap-prescriptions-table-body')) {
+    renderAdminPrescriptions();
+  }
+}
+
+/**
+ * Helper to get the displayable PNG image URL for a prescription
+ */
+function getPrescriptionPngUrl(rx) {
+  if (!rx) return 'assets/logo.png';
+  if (rx.pngPath) return rx.pngPath;
+  if (Array.isArray(rx.pngPaths) && rx.pngPaths.length > 0) return rx.pngPaths[0];
+  if (Array.isArray(rx.pngPages) && rx.pngPages.length > 0) return rx.pngPages[0];
+  if (rx.pngData) return rx.pngData;
+  return 'assets/logo.png';
+}
+
+/**
+ * Reads a File object as Base64 Data URL
+ */
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Converts a PDF File into high-resolution PNG Data URLs using PDF.js
+ * Each page is rendered at scale 2.0 (~150-200 DPI) on a solid white canvas
+ */
+async function convertPdfFileToPngPages(file) {
+  if (typeof pdfjsLib === 'undefined') {
+    throw new Error('PDF.js conversion library is not loaded. Please verify assets/pdf.min.js.');
+  }
+
+  // Ensure worker is configured
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'assets/pdf.worker.min.js';
+  }
+
+  let arrayBuffer;
+  if (typeof file.arrayBuffer === 'function') {
+    arrayBuffer = await file.arrayBuffer();
+  } else {
+    arrayBuffer = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdfDoc = await loadingTask.promise;
+  const numPages = pdfDoc.numPages;
+  const renderedPages = [];
+
+  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+    const page = await pdfDoc.getPage(pageNum);
+    // Scale 2.0 renders crisp text and graphics ideal for Half-A4 (A5) printing
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    const ctx = canvas.getContext('2d');
+
+    // Fill white background to prevent dark or transparent rendering on print
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const renderContext = {
+      canvasContext: ctx,
+      viewport: viewport
+    };
+
+    await page.render(renderContext).promise;
+    const pngDataUrl = canvas.toDataURL('image/png', 0.95);
+
+    renderedPages.push({
+      pageNum,
+      dataUrl: pngDataUrl,
+      width: viewport.width,
+      height: viewport.height,
+      isLandscape: viewport.width >= viewport.height
+    });
+  }
+
+  return renderedPages;
+}
+
+/**
+ * Handles Doctor PDF file selection from Drag & Drop or file dialog.
+ * STRICT REQUIREMENT: Only PDF files are accepted. Any other format is rejected with an alert.
+ */
+async function handleDoctorPdfSelection(file) {
+  if (!file) return;
+
+  const dropError = document.getElementById('yakap-drop-error');
+  const dropErrorText = document.getElementById('yakap-drop-error-text');
+  const dropzone = document.getElementById('yakap-dropzone');
+  const processingCard = document.getElementById('yakap-file-processing');
+  const fileNameEl = document.getElementById('yakap-file-name');
+  const fileDetailsEl = document.getElementById('yakap-file-details');
+  const conversionStatus = document.getElementById('yakap-conversion-status');
+  const conversionText = document.getElementById('yakap-conversion-text');
+  const previewContainer = document.getElementById('yakap-png-preview-container');
+  const sendBtn = document.getElementById('btn-send-prescription-admin');
+
+  // STRICT VALIDATION: Check file type and filename extension
+  const isPdf = file && (
+    file.type === 'application/pdf' ||
+    (typeof file.name === 'string' && file.name.toLowerCase().endsWith('.pdf'))
+  );
+
+  if (!isPdf) {
+    if (dropError) {
+      if (dropErrorText) {
+        dropErrorText.innerHTML = `<strong>Invalid File Type!</strong> Strictly PDF files only. You selected <code>${escapeHtml(file.name || 'unrecognized file')}</code> (${file.type || 'unknown format'}). Please drag and drop a valid .pdf file.`;
+      }
+      dropError.hidden = false;
+      dropError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    if (dropzone) {
+      dropzone.classList.add('shake');
+      setTimeout(() => dropzone.classList.remove('shake'), 600);
+    }
+    if (processingCard) processingCard.hidden = true;
+    const fileInput = document.getElementById('yakap-pdf-file-input');
+    if (fileInput) fileInput.value = '';
+    return;
+  }
+
+  // File is valid PDF: hide error alert
+  if (dropError) dropError.hidden = true;
+
+  yakapSelectedPdfFile = file;
+  yakapConvertedPngPages = [];
+
+  // Update file info display
+  if (fileNameEl) fileNameEl.textContent = file.name;
+  if (fileDetailsEl) {
+    const sizeKb = (file.size / 1024).toFixed(1);
+    fileDetailsEl.textContent = `${sizeKb} KB • PDF Document`;
+  }
+
+  // Pre-fill patient details if doctor is currently serving
+  linkDoctorServingPatientToYakap(false);
+
+  // Show processing card, hide dropzone
+  if (processingCard) processingCard.hidden = false;
+  if (dropzone) dropzone.style.display = 'none';
+
+  // Set converting status UI
+  if (conversionStatus) {
+    conversionStatus.className = 'yakap-conversion-status converting';
+    if (conversionText) {
+      conversionText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Converting PDF pages to high-resolution PNG for printing...';
+    }
+  }
+
+  if (previewContainer) {
+    previewContainer.innerHTML = `
+      <div style="padding: 36px 16px; text-align: center; color: var(--text-muted, #64748b);">
+        <i class="fa-solid fa-spinner fa-spin fa-2x" style="color: #2563eb; margin-bottom: 10px;"></i>
+        <p style="margin: 0; font-size: 0.95rem;">Rendering PDF pages to PNG (High-DPI)...</p>
+      </div>
+    `;
+  }
+
+  if (sendBtn) sendBtn.disabled = true;
+
+  try {
+    const pages = await convertPdfFileToPngPages(file);
+    yakapConvertedPngPages = pages;
+
+    if (conversionStatus) {
+      conversionStatus.className = 'yakap-conversion-status success';
+      if (conversionText) {
+        conversionText.innerHTML = `<i class="fa-solid fa-circle-check"></i> Converted ${pages.length} page${pages.length > 1 ? 's' : ''} to high-resolution PNG successfully (Ready for Half-A4 Landscape print)`;
+      }
+    }
+
+    // Render Preview
+    if (previewContainer && pages.length > 0) {
+      const primaryPage = pages[0];
+      const pageCounter = document.getElementById('yakap-page-counter');
+      if (pageCounter) {
+        pageCounter.textContent = `Page 1 of ${pages.length}`;
+      }
+
+      previewContainer.innerHTML = `
+        <div class="yakap-png-preview-card" style="cursor: zoom-in; position: relative;" title="Click to view full-resolution PNG">
+          <img src="${primaryPage.dataUrl}" alt="Converted PNG Preview" class="yakap-preview-img" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.12);" />
+          <div style="margin-top: 10px; font-size: 0.85rem; color: #2563eb; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600;">
+            <i class="fa-solid fa-magnifying-glass-plus"></i> Click preview to inspect full size PNG
+          </div>
+        </div>
+      `;
+
+      previewContainer.querySelector('.yakap-png-preview-card')?.addEventListener('click', () => {
+        openImageViewModal(primaryPage.dataUrl, `Prescription Preview — ${file.name}`);
+      });
+    }
+
+    if (sendBtn) sendBtn.disabled = false;
+  } catch (err) {
+    console.error('PDF Conversion error:', err);
+    if (conversionStatus) {
+      conversionStatus.className = 'yakap-conversion-status error';
+      if (conversionText) {
+        conversionText.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Error converting PDF: ${escapeHtml(err.message || 'Unknown error')}`;
+      }
+    }
+    if (previewContainer) {
+      previewContainer.innerHTML = `
+        <div style="padding: 24px; text-align: center; color: #dc2626;">
+          <i class="fa-solid fa-circle-xmark fa-2x" style="margin-bottom: 8px;"></i>
+          <p>Failed to convert PDF. Please make sure the file is a valid PDF document.</p>
+        </div>
+      `;
+    }
+    if (sendBtn) sendBtn.disabled = true;
+  }
+}
+
+/**
+ * Resets the Doctor PDF upload state back to clean dropzone
+ */
+function resetDoctorPdfUpload() {
+  yakapSelectedPdfFile = null;
+  yakapConvertedPngPages = [];
+
+  const dropzone = document.getElementById('yakap-dropzone');
+  const fileInput = document.getElementById('yakap-pdf-file-input');
+  const processingCard = document.getElementById('yakap-file-processing');
+  const dropError = document.getElementById('yakap-drop-error');
+  const previewContainer = document.getElementById('yakap-png-preview-container');
+  const sendBtn = document.getElementById('btn-send-prescription-admin');
+
+  if (fileInput) fileInput.value = '';
+  if (dropError) dropError.hidden = true;
+  if (processingCard) processingCard.hidden = true;
+  if (dropzone) {
+    dropzone.style.display = 'block';
+    dropzone.classList.remove('dragover');
+  }
+  if (previewContainer) previewContainer.innerHTML = '';
+  if (sendBtn) sendBtn.disabled = true;
+
+  const patInput = document.getElementById('doctor-prescription-patient');
+  const queueInput = document.getElementById('doctor-prescription-queue');
+  const notesInput = document.getElementById('doctor-prescription-notes');
+  if (patInput) patInput.value = '';
+  if (queueInput) queueInput.value = '';
+  if (notesInput) notesInput.value = '';
+}
+
+/**
+ * Updates the Doctor Serving Badge in the Yakap prescription header
+ */
+function updateDoctorServingBadge() {
+  const serving = getCurrentServingPatient();
+  const servingBadge = document.getElementById('doctor-serving-badge');
+  const servingText = document.getElementById('doctor-serving-text');
+
+  if (servingText) {
+    if (serving) {
+      servingText.innerHTML = `<strong>Serving:</strong> #${serving.queueNumber} — ${escapeHtml(serving.name)}`;
+      if (servingBadge) servingBadge.classList.add('active');
+    } else {
+      servingText.textContent = 'No active patient serving';
+      if (servingBadge) servingBadge.classList.remove('active');
+    }
+  }
+}
+
+/**
+ * Pre-fills patient name and queue # from currently serving patient
+ */
+function linkDoctorServingPatientToYakap(showAlert = false) {
+  const serving = getCurrentServingPatient();
+  const patInput = document.getElementById('doctor-prescription-patient');
+  const queueInput = document.getElementById('doctor-prescription-queue');
+
+  if (serving) {
+    if (patInput && (!patInput.value.trim() || showAlert)) {
+      patInput.value = serving.name || '';
+    }
+    if (queueInput && (!queueInput.value.trim() || showAlert)) {
+      queueInput.value = serving.queueNumber || '';
+    }
+    updateDoctorServingBadge();
+    if (showAlert) {
+      alert(`Linked patient #${serving.queueNumber} — ${serving.name} to this prescription.`);
+    }
+  } else {
+    updateDoctorServingBadge();
+    if (showAlert) {
+      alert('No patient is currently being served. You can enter the patient name manually.');
+    }
+  }
+}
+
+/**
+ * Doctor submits the prescription: sends converted PNG and PDF to Admin
+ */
+async function sendPrescriptionToAdmin() {
+  if (!yakapSelectedPdfFile || !yakapConvertedPngPages || yakapConvertedPngPages.length === 0) {
+    alert('Please select and convert a PDF prescription first.');
+    return;
+  }
+
+  const patientInput = document.getElementById('doctor-prescription-patient');
+  const queueInput = document.getElementById('doctor-prescription-queue');
+  const notesInput = document.getElementById('doctor-prescription-notes');
+  const sendBtn = document.getElementById('btn-send-prescription-admin');
+
+  const patientName = patientInput?.value?.trim() || '';
+  if (!patientName) {
+    alert('Please enter the patient name for this prescription.');
+    patientInput?.focus();
+    return;
+  }
+
+  const queueNumber = queueInput?.value ? parseInt(queueInput.value, 10) : null;
+  const notes = notesInput?.value?.trim() || '';
+
+  const originalBtnHtml = sendBtn.innerHTML;
+  sendBtn.disabled = true;
+  sendBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending Converted PNG to Admin...';
+
+  try {
+    let pdfBase64 = '';
+    try {
+      pdfBase64 = await readFileAsBase64(yakapSelectedPdfFile);
+    } catch (e) {
+      console.warn('Could not read PDF as base64', e);
+    }
+
+    const payload = {
+      action: 'upload-prescription-pdf',
+      patientName,
+      queueNumber,
+      notes,
+      fileName: yakapSelectedPdfFile.name,
+      doctorName: 'Doc. Renz Sale, MD',
+      pdfBase64,
+      pngPages: yakapConvertedPngPages.map((p) => p.dataUrl)
+    };
+
+    const apiUrl = getBackendApiUrl();
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      cache: 'no-store'
+    });
+
+    const data = await response.json();
+    if (data?.success) {
+      if (Array.isArray(data.prescriptions)) {
+        syncPrescriptionsFromBackend(data.prescriptions);
+        broadcastPrescriptions(data.prescriptions);
+      }
+
+      alert(`Prescription for ${patientName} uploaded and converted to PNG successfully!\nAdmin desk has received it and can now print on landscape half-A4 paper.`);
+
+      resetDoctorPdfUpload();
+      renderDoctorPrescriptions();
+    } else {
+      alert(`Failed to upload prescription: ${data?.message || 'Server error'}`);
+    }
+  } catch (err) {
+    console.error('Error sending prescription to admin:', err);
+    alert('Failed to send prescription. Check network or server connection.');
+  } finally {
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.innerHTML = originalBtnHtml;
+    }
+  }
+}
+
+/**
+ * Renders Doctor's Sent Prescriptions History Table
+ */
+function renderDoctorPrescriptions() {
+  const tableBody = document.getElementById('doctor-prescriptions-table-body');
+  const countPill = document.getElementById('doctor-rx-count-pill');
+  if (!tableBody) return;
+
+  const prescriptions = Array.isArray(state.prescriptions) ? state.prescriptions : [];
+  if (countPill) {
+    countPill.textContent = `${prescriptions.length} sent`;
+  }
+
+  updateDoctorServingBadge();
+
+  if (prescriptions.length === 0) {
+    tableBody.innerHTML = `
+      <tr class="empty-row">
+        <td colspan="8" style="text-align: center; padding: 32px; color: var(--text-muted, #64748b);">
+          <i class="fa-solid fa-file-prescription fa-2x" style="margin-bottom: 8px; display: block; opacity: 0.6;"></i>
+          No prescriptions sent yet today. Drag and drop a PDF above to prescribe and send directly to Admin.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = prescriptions.map((rx) => {
+    const pngUrl = getPrescriptionPngUrl(rx);
+    const isPrinted = rx.status === 'printed';
+
+    return `
+      <tr>
+        <td>
+          <div class="yakap-table-thumb-wrap" data-rx-id="${rx.id}" title="Click to view full PNG" style="cursor: zoom-in;">
+            <img src="${pngUrl}" alt="Rx PNG" class="yakap-table-thumb" />
+          </div>
+        </td>
+        <td><strong class="mono-code" style="font-family: monospace; color: #1e40af;">${escapeHtml(rx.rxNumber)}</strong></td>
+        <td>
+          <strong>${escapeHtml(rx.patientName)}</strong>
+          ${rx.clinicalNotes ? `<br><small class="text-muted">${escapeHtml(rx.clinicalNotes)}</small>` : ''}
+        </td>
+        <td>
+          ${rx.queueNumber ? `<span class="badge queue-num-badge">#${rx.queueNumber}</span>` : '<span class="text-muted">—</span>'}
+        </td>
+        <td>
+          <span style="font-size: 0.85rem; color: #475569;"><i class="fa-solid fa-file-pdf" style="color: #ef4444; margin-right: 4px;"></i>${escapeHtml(rx.fileName || 'prescription.pdf')}</span>
+        </td>
+        <td><small class="time-stamp">${formatDateTimeDisplay(rx.createdAt)}</small></td>
+        <td>
+          <span class="status-badge ${isPrinted ? 'printed' : 'pending'}">
+            <i class="fa-solid ${isPrinted ? 'fa-circle-check' : 'fa-clock'}"></i>
+            ${isPrinted ? 'Printed' : 'Pending Print'}
+          </span>
+          ${rx.printedAt ? `<br><small class="text-muted" style="font-size: 0.72rem;">Printed at ${formatTimeOnly(rx.printedAt)}</small>` : ''}
+        </td>
+        <td>
+          <div style="display: flex; gap: 6px;">
+            <button type="button" class="btn btn-secondary btn-sm btn-view-doctor-rx" data-rx-id="${rx.id}" title="View Converted PNG">
+              <i class="fa-solid fa-eye"></i> View PNG
+            </button>
+            ${rx.pdfPath ? `
+              <a href="${rx.pdfPath}" download="${escapeHtml(rx.fileName || 'prescription.pdf')}" class="btn btn-outline-secondary btn-sm" title="Download original PDF">
+                <i class="fa-solid fa-download"></i> PDF
+              </a>
+            ` : ''}
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * Initializes Doctor YAKAP Prescriptions events & controls
+ */
+function initDoctorYakapPrescription() {
+  const dropzone = document.getElementById('yakap-dropzone');
+  const fileInput = document.getElementById('yakap-pdf-file-input');
+  const browseBtn = document.getElementById('btn-browse-pdf');
+  const removePdfBtn = document.getElementById('btn-remove-selected-pdf');
+  const cancelUploadBtn = document.getElementById('btn-cancel-pdf-upload');
+  const sendAdminBtn = document.getElementById('btn-send-prescription-admin');
+  const linkPatientBtn = document.getElementById('btn-use-serving-patient');
+  const prescribeBtn = document.getElementById('doctor-prescribe-btn');
+  const doctorTable = document.getElementById('doctor-prescriptions-table-body');
+
+  // Drag and Drop handlers on #yakap-dropzone
+  if (dropzone && !dropzone.dataset.initialized) {
+    dropzone.dataset.initialized = 'true';
+
+    ['dragenter', 'dragover'].forEach((eventName) => {
+      dropzone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'dragend'].forEach((eventName) => {
+      dropzone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropzone.classList.remove('dragover');
+      });
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.classList.remove('dragover');
+
+      if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleDoctorPdfSelection(e.dataTransfer.files[0]);
+      }
+    });
+
+    dropzone.addEventListener('click', (e) => {
+      if (e.target !== browseBtn && !browseBtn?.contains(e.target) && fileInput) {
+        fileInput.click();
+      }
+    });
+
+    dropzone.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && fileInput) {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+  }
+
+  if (browseBtn && fileInput && !browseBtn.dataset.initialized) {
+    browseBtn.dataset.initialized = 'true';
+    browseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      fileInput.click();
+    });
+  }
+
+  if (fileInput && !fileInput.dataset.initialized) {
+    fileInput.dataset.initialized = 'true';
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files.length > 0) {
+        handleDoctorPdfSelection(fileInput.files[0]);
+      }
+    });
+  }
+
+  if (removePdfBtn && !removePdfBtn.dataset.initialized) {
+    removePdfBtn.dataset.initialized = 'true';
+    removePdfBtn.addEventListener('click', resetDoctorPdfUpload);
+  }
+
+  if (cancelUploadBtn && !cancelUploadBtn.dataset.initialized) {
+    cancelUploadBtn.dataset.initialized = 'true';
+    cancelUploadBtn.addEventListener('click', resetDoctorPdfUpload);
+  }
+
+  if (sendAdminBtn && !sendAdminBtn.dataset.initialized) {
+    sendAdminBtn.dataset.initialized = 'true';
+    sendAdminBtn.addEventListener('click', sendPrescriptionToAdmin);
+  }
+
+  if (linkPatientBtn && !linkPatientBtn.dataset.initialized) {
+    linkPatientBtn.dataset.initialized = 'true';
+    linkPatientBtn.addEventListener('click', () => {
+      linkDoctorServingPatientToYakap(true);
+    });
+  }
+
+  if (prescribeBtn && !prescribeBtn.dataset.initialized) {
+    prescribeBtn.dataset.initialized = 'true';
+    prescribeBtn.addEventListener('click', () => {
+      const yakapNav = document.querySelector('.nav-item[data-page="yakap-prescription"]');
+      if (yakapNav) {
+        yakapNav.click();
+      }
+      linkDoctorServingPatientToYakap(false);
+    });
+  }
+
+  if (doctorTable && !doctorTable.dataset.initialized) {
+    doctorTable.dataset.initialized = 'true';
+    doctorTable.addEventListener('click', (e) => {
+      const viewBtn = e.target.closest('.btn-view-doctor-rx');
+      const thumbWrap = e.target.closest('.yakap-table-thumb-wrap');
+      if (viewBtn || thumbWrap) {
+        const rxId = (viewBtn || thumbWrap).dataset.rxId;
+        const rx = state.prescriptions.find((p) => String(p.id) === String(rxId));
+        if (rx) {
+          const imgSrc = getPrescriptionPngUrl(rx);
+          openImageViewModal(imgSrc, `Prescription — ${rx.rxNumber} (${rx.patientName})`);
+        }
+      }
+    });
+  }
+
+  renderDoctorPrescriptions();
+}
+
+/**
+ * Renders Admin Prescriptions Registry Table & Dashboard Stats
+ */
+function renderAdminPrescriptions() {
+  const tableBody = document.getElementById('admin-yakap-prescriptions-table-body');
+  const totalStat = document.getElementById('stat-yakap-total');
+  const activeStat = document.getElementById('stat-yakap-active');
+  const dispensedStat = document.getElementById('stat-yakap-dispensed');
+  const countPill = document.getElementById('yakap-rx-count-pill');
+  const searchInput = document.getElementById('admin-yakap-search');
+  const filterSelect = document.getElementById('admin-yakap-filter');
+
+  if (!tableBody) return;
+
+  const prescriptions = Array.isArray(state.prescriptions) ? state.prescriptions : [];
+
+  // Calculate stats
+  const totalCount = prescriptions.length;
+  const pendingCount = prescriptions.filter((p) => p.status !== 'printed').length;
+  const printedCount = prescriptions.filter((p) => p.status === 'printed').length;
+
+  if (totalStat) totalStat.textContent = totalCount;
+  if (activeStat) activeStat.textContent = pendingCount;
+  if (dispensedStat) dispensedStat.textContent = printedCount;
+  if (countPill) countPill.textContent = `${totalCount} prescription${totalCount !== 1 ? 's' : ''}`;
+
+  // Apply filters
+  const searchTerm = (searchInput?.value || '').toLowerCase().trim();
+  const filterStatus = filterSelect?.value || 'all';
+
+  const filtered = prescriptions.filter((rx) => {
+    if (filterStatus === 'active' && rx.status === 'printed') return false;
+    if (filterStatus === 'printed' && rx.status !== 'printed') return false;
+
+    if (searchTerm) {
+      const matchName = (rx.patientName || '').toLowerCase().includes(searchTerm);
+      const matchRx = (rx.rxNumber || '').toLowerCase().includes(searchTerm);
+      const matchQueue = String(rx.queueNumber || '').includes(searchTerm);
+      const matchNotes = (rx.clinicalNotes || '').toLowerCase().includes(searchTerm);
+      return matchName || matchRx || matchQueue || matchNotes;
+    }
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    tableBody.innerHTML = `
+      <tr class="empty-row">
+        <td colspan="8" style="text-align: center; padding: 40px 16px; color: var(--text-muted, #64748b);">
+          <i class="fa-solid fa-file-prescription fa-2x" style="margin-bottom: 8px; display: block; opacity: 0.6;"></i>
+          ${prescriptions.length === 0
+            ? 'No prescriptions received from Doctor yet. When a doctor uploads a PDF prescription, it is automatically converted to PNG and appears here ready for Landscape Half-A4 printing.'
+            : 'No prescriptions match your search / filter criteria.'}
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = filtered.map((rx) => {
+    const pngUrl = getPrescriptionPngUrl(rx);
+    const isPrinted = rx.status === 'printed';
+
+    return `
+      <tr>
+        <td>
+          <div class="yakap-table-thumb-wrap" data-rx-id="${rx.id}" title="Click to view full PNG" style="cursor: zoom-in;">
+            <img src="${pngUrl}" alt="Rx PNG" class="yakap-table-thumb" />
+          </div>
+        </td>
+        <td><strong class="mono-code" style="font-family: monospace; color: #1e40af;">${escapeHtml(rx.rxNumber)}</strong></td>
+        <td>
+          <strong>${escapeHtml(rx.patientName)}</strong>
+          ${rx.clinicalNotes ? `<br><small class="text-muted">${escapeHtml(rx.clinicalNotes)}</small>` : ''}
+        </td>
+        <td>
+          ${rx.queueNumber ? `<span class="badge queue-num-badge">#${rx.queueNumber}</span>` : '<span class="text-muted">—</span>'}
+        </td>
+        <td><small class="time-stamp">${formatDateTimeDisplay(rx.createdAt)}</small></td>
+        <td><span class="doctor-badge"><i class="fa-solid fa-user-doctor"></i> ${escapeHtml(rx.doctorName || 'Doctor')}</span></td>
+        <td>
+          <span class="status-badge ${isPrinted ? 'printed' : 'pending'}">
+            <i class="fa-solid ${isPrinted ? 'fa-circle-check' : 'fa-clock'}"></i>
+            ${isPrinted ? 'Printed' : 'Pending Print'}
+          </span>
+          ${rx.printedAt ? `<br><small class="text-muted" style="font-size: 0.72rem;">Printed at ${formatTimeOnly(rx.printedAt)}</small>` : ''}
+        </td>
+        <td>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button type="button" class="btn-print-half-a4" data-rx-id="${rx.id}" title="Print in Landscape Mode Half of an A4 Paper">
+              <i class="fa-solid fa-print"></i> Print (Half A4)
+            </button>
+            <button type="button" class="action-btn-sm btn-view-rx-png" data-rx-id="${rx.id}" title="View Full PNG">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+            <button type="button" class="action-btn-sm danger btn-delete-rx" data-rx-id="${rx.id}" title="Delete Prescription">
+              <i class="fa-solid fa-trash-can"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * Opens dedicated Half-A4 Landscape print preview modal
+ */
+function openHalfA4PrintModal(rxId) {
+  const rx = state.prescriptions.find((p) => String(p.id) === String(rxId));
+  if (!rx) {
+    alert('Prescription not found.');
+    return;
+  }
+
+  yakapCurrentPrintingRxId = rx.id;
+  const modal = document.getElementById('yakap-half-a4-print-modal');
+  const printImg = document.getElementById('yakap-print-png-img');
+  const modalTitle = document.getElementById('print-modal-title');
+
+  const pngUrl = getPrescriptionPngUrl(rx);
+  if (printImg) {
+    printImg.src = pngUrl;
+    printImg.alt = `Prescription ${rx.rxNumber} - ${rx.patientName}`;
+  }
+
+  if (modalTitle) {
+    modalTitle.innerHTML = `<i class="fa-solid fa-print"></i> Print Prescription: <strong>${escapeHtml(rx.patientName)}</strong> (#${escapeHtml(rx.rxNumber)})`;
+  }
+
+  if (modal) {
+    modal.hidden = false;
+    requestAnimationFrame(() => modal.classList.add('active'));
+  }
+}
+
+/**
+ * Triggers landscape half of an A4 paper print and marks status as 'printed' in database
+ */
+async function triggerHalfA4Print() {
+  if (!yakapCurrentPrintingRxId) return;
+  const rxId = yakapCurrentPrintingRxId;
+
+  // Trigger browser print dialog for Half-A4 Landscape print
+  window.print();
+
+  // Mark prescription as printed in database
+  try {
+    const apiUrl = getBackendApiUrl();
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'mark-prescription-printed',
+        id: rxId,
+        printedBy: 'Admin'
+      }),
+      cache: 'no-store'
+    });
+
+    const data = await response.json();
+    if (data?.success && Array.isArray(data.prescriptions)) {
+      syncPrescriptionsFromBackend(data.prescriptions);
+      broadcastPrescriptions(data.prescriptions);
+    } else {
+      // Optimistic update
+      const rx = state.prescriptions.find((p) => String(p.id) === String(rxId));
+      if (rx) {
+        rx.status = 'printed';
+        rx.printedAt = new Date().toISOString();
+        renderAdminPrescriptions();
+        renderDoctorPrescriptions();
+        broadcastPrescriptions(state.prescriptions);
+      }
+    }
+  } catch (err) {
+    console.error('Error marking prescription printed:', err);
+  }
+}
+
+/**
+ * Deletes a prescription record
+ */
+async function deletePrescription(rxId) {
+  const rx = state.prescriptions.find((p) => String(p.id) === String(rxId));
+  const confirmMsg = rx
+    ? `Are you sure you want to delete the prescription for ${rx.patientName} (${rx.rxNumber})?`
+    : 'Are you sure you want to delete this prescription?';
+
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const apiUrl = getBackendApiUrl();
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete-prescription', id: rxId }),
+      cache: 'no-store'
+    });
+    const data = await response.json();
+    if (data?.success && Array.isArray(data.prescriptions)) {
+      syncPrescriptionsFromBackend(data.prescriptions);
+      broadcastPrescriptions(data.prescriptions);
+    } else {
+      state.prescriptions = state.prescriptions.filter((p) => String(p.id) !== String(rxId));
+      renderAdminPrescriptions();
+      renderDoctorPrescriptions();
+      broadcastPrescriptions(state.prescriptions);
+    }
+  } catch (err) {
+    console.error('Error deleting prescription:', err);
+    alert('Failed to delete prescription.');
+  }
+}
+
+/**
+ * Universal full-resolution image viewer modal
+ */
+function openImageViewModal(imgSrc, title = 'Prescription Preview') {
+  const modal = document.getElementById('yakap-image-view-modal');
+  const imgEl = document.getElementById('yakap-view-img');
+  const titleEl = document.getElementById('yakap-view-title');
+  const downloadBtn = document.getElementById('btn-download-rx-png');
+  const closeBtn = document.getElementById('btn-close-view-modal');
+
+  if (!modal || !imgEl) return;
+
+  imgEl.src = imgSrc;
+  if (titleEl) {
+    titleEl.innerHTML = `<i class="fa-solid fa-image"></i> ${escapeHtml(title)}`;
+  }
+  if (downloadBtn) {
+    downloadBtn.href = imgSrc;
+    downloadBtn.download = `${title.replace(/[^a-z0-9_-]/gi, '_')}.png`;
+  }
+
+  modal.hidden = false;
+  requestAnimationFrame(() => modal.classList.add('active'));
+
+  const closeModal = () => {
+    modal.classList.remove('active');
+    setTimeout(() => { modal.hidden = true; }, 200);
+  };
+
+  if (closeBtn) {
+    closeBtn.onclick = closeModal;
+  }
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      closeModal();
+    }
+  };
+}
+
+/**
+ * Initializes Admin YAKAP Prescriptions Desk events & controls
+ */
+function initAdminYakapPrescription() {
+  const searchInput = document.getElementById('admin-yakap-search');
+  const filterSelect = document.getElementById('admin-yakap-filter');
+  const refreshBtn = document.getElementById('btn-refresh-prescriptions');
+  const triggerPrintBtn = document.getElementById('btn-trigger-half-a4-print');
+  const closePrintModalBtn = document.getElementById('btn-close-print-modal');
+  const printModal = document.getElementById('yakap-half-a4-print-modal');
+  const adminTable = document.getElementById('admin-yakap-prescriptions-table-body');
+
+  if (searchInput && !searchInput.dataset.initialized) {
+    searchInput.dataset.initialized = 'true';
+    searchInput.addEventListener('input', () => {
+      renderAdminPrescriptions();
+    });
+  }
+
+  if (filterSelect && !filterSelect.dataset.initialized) {
+    filterSelect.dataset.initialized = 'true';
+    filterSelect.addEventListener('change', () => {
+      renderAdminPrescriptions();
+    });
+  }
+
+  if (refreshBtn && !refreshBtn.dataset.initialized) {
+    refreshBtn.dataset.initialized = 'true';
+    refreshBtn.addEventListener('click', async () => {
+      const icon = refreshBtn.querySelector('i');
+      if (icon) icon.classList.add('fa-spin');
+      await fetchState();
+      setTimeout(() => {
+        if (icon) icon.classList.remove('fa-spin');
+      }, 500);
+    });
+  }
+
+  if (triggerPrintBtn && !triggerPrintBtn.dataset.initialized) {
+    triggerPrintBtn.dataset.initialized = 'true';
+    triggerPrintBtn.addEventListener('click', triggerHalfA4Print);
+  }
+
+  if (closePrintModalBtn && printModal && !closePrintModalBtn.dataset.initialized) {
+    closePrintModalBtn.dataset.initialized = 'true';
+    closePrintModalBtn.addEventListener('click', () => {
+      printModal.classList.remove('active');
+      setTimeout(() => { printModal.hidden = true; }, 200);
+    });
+  }
+
+  if (adminTable && !adminTable.dataset.initialized) {
+    adminTable.dataset.initialized = 'true';
+    adminTable.addEventListener('click', (e) => {
+      const printBtn = e.target.closest('.btn-print-half-a4');
+      if (printBtn) {
+        const rxId = printBtn.dataset.rxId;
+        openHalfA4PrintModal(rxId);
+        return;
+      }
+
+      const viewBtn = e.target.closest('.btn-view-rx-png');
+      const thumbWrap = e.target.closest('.yakap-table-thumb-wrap');
+      if (viewBtn || thumbWrap) {
+        const rxId = (viewBtn || thumbWrap).dataset.rxId;
+        const rx = state.prescriptions.find((p) => String(p.id) === String(rxId));
+        if (rx) {
+          const imgSrc = getPrescriptionPngUrl(rx);
+          openImageViewModal(imgSrc, `Prescription — ${rx.rxNumber} (${rx.patientName})`);
+        }
+        return;
+      }
+
+      const deleteBtn = e.target.closest('.btn-delete-rx');
+      if (deleteBtn) {
+        const rxId = deleteBtn.dataset.rxId;
+        deletePrescription(rxId);
+        return;
+      }
+    });
+  }
+
+  renderAdminPrescriptions();
+}
+
+/**
+ * Format helper for readable date & time
+ */
+function formatDateTimeDisplay(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch (e) {
+    return dateStr;
+  }
+}
+
+/**
+ * Format helper for time only
+ */
+function formatTimeOnly(dateStr) {
+  if (!dateStr) return '';
+  try {
+    const d = new Date(dateStr.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  } catch (e) {
+    return dateStr;
+  }
+}
+
