@@ -3354,21 +3354,45 @@ function stopYouTubePlayer() {
     }
   }
 
-  if (youtubePlayer && typeof youtubePlayer.stopVideo === 'function') {
+  if (youtubePlayer) {
     try {
-      youtubePlayer.stopVideo();
+      if (typeof youtubePlayer.stopVideo === 'function') {
+        youtubePlayer.stopVideo();
+      }
+      if (typeof youtubePlayer.destroy === 'function') {
+        youtubePlayer.destroy();
+      }
     } catch (e) {}
+    youtubePlayer = null;
   }
   postToPlayerIframe('stopVideo');
 
   const playerEl = document.getElementById('youtube-player');
   if (playerEl) {
-    playerEl.style.display = 'none';
+    playerEl.remove();
   }
 
   currentLoadedPlaylistId = null;
   currentPlaylistEnabled = false;
   hideUnmuteNotice();
+}
+
+function recreateYouTubePlayer(forcePlay = true) {
+  if (youtubePlayer) {
+    try {
+      if (typeof youtubePlayer.destroy === 'function') {
+        youtubePlayer.destroy();
+      }
+    } catch (e) {}
+    youtubePlayer = null;
+  }
+  const existingPlayer = document.getElementById('youtube-player');
+  if (existingPlayer) {
+    existingPlayer.remove();
+  }
+  currentLoadedPlaylistId = null;
+  currentPlaylistEnabled = null;
+  initYouTubePlayer(forcePlay);
 }
 
 function handleRemoteVideoCommand(command, videoConfig = null) {
@@ -3380,10 +3404,9 @@ function handleRemoteVideoCommand(command, videoConfig = null) {
   if (command === 'play') {
     if (videoConfig && videoConfig.playlistId) {
       state.videoConfig = videoConfig;
-      currentLoadedPlaylistId = null; // Force reload & autoplay
-      initYouTubePlayer(true);
+      recreateYouTubePlayer(true);
     } else {
-      fetchState().then(() => initYouTubePlayer(true));
+      fetchState().then(() => recreateYouTubePlayer(true));
     }
   } else if (command === 'stop') {
     if (videoConfig) state.videoConfig = videoConfig;
@@ -3437,7 +3460,7 @@ function initYouTubePlayer(forcePlay = false) {
   }
 
   // If already playing this playlist and not forced, don't restart it on every poll
-  if (currentLoadedPlaylistId === videoConfig.playlistId && currentPlaylistEnabled === true && !forcePlay) {
+  if (currentLoadedPlaylistId === videoConfig.playlistId && currentPlaylistEnabled === true && !forcePlay && youtubePlayer) {
     const playerEl = document.getElementById('youtube-player');
     if (playerEl) playerEl.style.display = '';
     if (placeholder) placeholder.hidden = true;
@@ -3450,9 +3473,21 @@ function initYouTubePlayer(forcePlay = false) {
     return;
   }
 
+  // If forcePlay requested or playlist changed, cleanly destroy existing player first
+  if (youtubePlayer && (forcePlay || currentLoadedPlaylistId !== videoConfig.playlistId)) {
+    try {
+      if (typeof youtubePlayer.destroy === 'function') {
+        youtubePlayer.destroy();
+      }
+    } catch (e) {}
+    youtubePlayer = null;
+    const existingEl = document.getElementById('youtube-player');
+    if (existingEl) existingEl.remove();
+  }
+
   if (placeholder) placeholder.hidden = true;
 
-  // Ensure player element exists and is visible
+  // Ensure fresh player div element exists in container
   let playerDiv = document.getElementById('youtube-player');
   if (!playerDiv) {
     playerDiv = document.createElement('div');
@@ -3462,32 +3497,7 @@ function initYouTubePlayer(forcePlay = false) {
   }
   playerDiv.style.display = '';
 
-  // If player already exists, load the playlist and force autoplay
-  if (youtubePlayer && typeof youtubePlayer.loadPlaylist === 'function') {
-    try {
-      youtubePlayer.loadPlaylist({
-        list: videoConfig.playlistId,
-        listType: 'playlist'
-      });
-      if (videoConfig.isPaused) {
-        try { youtubePlayer.pauseVideo(); } catch (e) {}
-        postToPlayerIframe('pauseVideo');
-      } else {
-        forceAutoplay(youtubePlayer);
-      }
-      currentLoadedPlaylistId = videoConfig.playlistId;
-      currentPlaylistEnabled = true;
-      return;
-    } catch (e) {
-      console.warn('Failed to call loadPlaylist on existing player, recreating:', e);
-      if (typeof youtubePlayer.destroy === 'function') {
-        try { youtubePlayer.destroy(); } catch (err) {}
-      }
-      youtubePlayer = null;
-    }
-  }
-
-  // Create new player with autoplay and API enabled
+  // Create new player with autoplay, loop, and API enabled
   try {
     youtubePlayer = new YT.Player('youtube-player', {
       height: '100%',
@@ -3498,6 +3508,7 @@ function initYouTubePlayer(forcePlay = false) {
         'autoplay': videoConfig.isPaused ? 0 : 1,
         'controls': 1,
         'rel': 0,
+        'loop': 1,
         'modestbranding': 1,
         'playsinline': 1,
         'enablejsapi': 1,
@@ -3505,6 +3516,7 @@ function initYouTubePlayer(forcePlay = false) {
       },
       events: {
         'onReady': (event) => {
+          if (placeholder) placeholder.hidden = true;
           if (state.videoConfig && state.videoConfig.isPaused) {
             try { event.target.pauseVideo(); } catch (e) {}
             postToPlayerIframe('pauseVideo');
@@ -3512,6 +3524,7 @@ function initYouTubePlayer(forcePlay = false) {
             forceAutoplay(event.target);
           }
         },
+        'onStateChange': onPlayerStateChange,
         'onError': onPlayerError
       }
     });
@@ -3523,14 +3536,33 @@ function initYouTubePlayer(forcePlay = false) {
   }
 }
 
-function onPlayerError(event) {
-  console.error('YouTube player error:', event.data);
-  const placeholder = document.getElementById('youtube-placeholder');
-  const placeholderText = document.querySelector('.placeholder-text');
-  if (placeholder && placeholderText) {
-    placeholder.hidden = false;
-    placeholderText.textContent = 'Unable to load playlist. Please check YouTube URL/playlist settings.';
+function onPlayerStateChange(event) {
+  // YT.PlayerState.ENDED = 0
+  if (event.data === 0) {
+    console.log('Video finished. Auto-advancing to next video in playlist...');
+    if (youtubePlayer && typeof youtubePlayer.nextVideo === 'function') {
+      try {
+        youtubePlayer.nextVideo();
+      } catch (e) {}
+    }
   }
+}
+
+function onPlayerError(event) {
+  console.warn('YouTube player error code:', event.data);
+  // Auto-recovery: if YouTube hits an error (codes 2, 5, 100, 101, 150):
+  // 1. Try skipping to next video in playlist
+  if (youtubePlayer && typeof youtubePlayer.nextVideo === 'function') {
+    try {
+      youtubePlayer.nextVideo();
+      return;
+    } catch (e) {}
+  }
+
+  // 2. If skipping failed or player crashed, cleanly recreate player from video 0
+  setTimeout(() => {
+    recreateYouTubePlayer(true);
+  }, 1200);
 }
 
 // Update YouTube player when video config changes
