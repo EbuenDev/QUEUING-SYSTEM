@@ -1520,7 +1520,7 @@ body.waiting-room {
 
 .waiting-room-main {
   display: grid;
-  grid-template-columns: 1.35fr 1fr;
+  grid-template-columns: 1fr 1.35fr;
   gap: 24px;
   padding: 24px 32px;
   flex: 1;
