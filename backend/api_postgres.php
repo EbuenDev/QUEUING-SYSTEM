@@ -301,6 +301,64 @@ function ensureMessagesTable(?PDO $db): void {
     } catch (Exception $e) {}
 }
 
+function ensureTypingStatusTable(?PDO $db): void {
+    if ($db === null) return;
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS typing_status (
+            user_role VARCHAR(50) PRIMARY KEY,
+            is_typing BOOLEAN DEFAULT FALSE,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )");
+    } catch (Exception $e) {}
+}
+
+function setTypingStatus(?PDO $db, string $userRole, bool $isTyping): void {
+    try {
+        if ($db === null) {
+            return;
+        }
+
+        ensureTypingStatusTable($db);
+
+        $stmt = $db->prepare("INSERT INTO typing_status (user_role, is_typing, last_updated)
+                             VALUES (:userRole, :isTyping, CURRENT_TIMESTAMP)
+                             ON CONFLICT (user_role) DO UPDATE
+                             SET is_typing = EXCLUDED.is_typing,
+                                 last_updated = CURRENT_TIMESTAMP");
+        $stmt->execute([
+            ':userRole' => $userRole,
+            ':isTyping' => $isTyping
+        ]);
+    } catch (PDOException $e) {
+        error_log('Error setting typing status: ' . $e->getMessage());
+    }
+}
+
+function getPartnerTypingStatus(?PDO $db, string $userRole): bool {
+    try {
+        if ($db === null) {
+            return false;
+        }
+
+        ensureTypingStatusTable($db);
+
+        $partnerRole = ($userRole === 'admin') ? 'doctor' : 'admin';
+
+        $stmt = $db->prepare("SELECT is_typing, last_updated
+                             FROM typing_status
+                             WHERE user_role = :partnerRole
+                               AND is_typing = true
+                               AND last_updated > NOW() - INTERVAL '5 seconds'");
+        $stmt->execute([':partnerRole' => $partnerRole]);
+        $result = $stmt->fetch();
+
+        return $result && (bool)$result['is_typing'];
+    } catch (PDOException $e) {
+        error_log('Error getting typing status: ' . $e->getMessage());
+        return false;
+    }
+}
+
 function loadMessagesFromDatabase(?PDO $db, string $userRole, int $lastId = 0): array {
     try {
         if ($db === null) {
@@ -814,7 +872,7 @@ if (!is_array($payload)) {
 
 $action = $payload['action'] ?? '';
 $requiresAdminAuth = in_array($action, ['add', 'edit', 'delete'], true);
-$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read', 'send-message', 'poll-messages', 'mark-messages-read', 'cleanup-messages'], true);
+$requiresDoctorAuth = in_array($action, ['serve', 'finish', 'skip', 'recall', 'serve-next', 'edit-history', 'send-to-followup', 'call-followup', 'ready-for-doctor', 'poll-notifications', 'mark-notifications-read', 'send-message', 'poll-messages', 'mark-messages-read', 'cleanup-messages', 'set-typing-status', 'get-typing-status'], true);
 $requiresSuperAdminAuth = in_array($action, ['create-user', 'list-users', 'update-user', 'delete-user'], true);
 
 if ($requiresAdminAuth && !isAdminAuthenticated()) {
@@ -1584,6 +1642,47 @@ try {
         case 'cleanup-messages':
             cleanupOldMessages($db);
             jsonResponse(['success' => true, 'message' => 'Old messages cleaned up']);
+            break;
+
+        case 'set-typing-status':
+            $userRole = '';
+            $requestedRole = trim((string)($payload['userRole'] ?? $payload['senderRole'] ?? ''));
+            if ($requestedRole === 'admin' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $userRole = 'admin';
+            } elseif ($requestedRole === 'doctor' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $userRole = 'doctor';
+            } elseif (isAdminAuthenticated()) {
+                $userRole = 'admin';
+            } elseif (isDoctorAuthenticated()) {
+                $userRole = 'doctor';
+            } else {
+                jsonResponse(['success' => false, 'message' => 'Authentication required'], 401);
+                exit;
+            }
+
+            $isTyping = (bool)($payload['isTyping'] ?? false);
+            setTypingStatus($db, $userRole, $isTyping);
+            jsonResponse(['success' => true]);
+            break;
+
+        case 'get-typing-status':
+            $userRole = '';
+            $requestedRole = trim((string)($payload['userRole'] ?? $payload['senderRole'] ?? ''));
+            if ($requestedRole === 'admin' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $userRole = 'admin';
+            } elseif ($requestedRole === 'doctor' && (isAdminAuthenticated() || isDoctorAuthenticated())) {
+                $userRole = 'doctor';
+            } elseif (isAdminAuthenticated()) {
+                $userRole = 'admin';
+            } elseif (isDoctorAuthenticated()) {
+                $userRole = 'doctor';
+            } else {
+                jsonResponse(['success' => false, 'message' => 'Authentication required'], 401);
+                exit;
+            }
+
+            $partnerIsTyping = getPartnerTypingStatus($db, $userRole);
+            jsonResponse(['success' => true, 'partnerIsTyping' => $partnerIsTyping]);
             break;
 
         case 'get-video-config':

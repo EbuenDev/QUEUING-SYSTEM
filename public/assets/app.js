@@ -435,6 +435,7 @@ function initRealtimeSync() {
       const popup = document.getElementById('message-popup');
       if (!popup || popup.hidden) {
         pollMessages();
+        pollTypingStatus();
       }
     }
   }, 1500);
@@ -3163,7 +3164,7 @@ function handleIncomingChatEvent(data) {
           showDesktopNotification(getRoleDisplayName(msg.senderRole), msg.message);
         }
       }
-      smartScrollToBottom();
+      smartScrollToBottom(true);
     }
   } else if (data.type === 'messages-read') {
     const userRole = getCurrentUserRole();
@@ -3315,7 +3316,14 @@ function showTypingIndicator(senderName) {
   }, 2800);
 }
 
-function handleTypingInput() {
+async function handleTypingInput() {
+  const input = document.getElementById('message-input');
+  if (!input) return;
+
+  // Only send typing status if there's actual text in the input
+  const hasText = input.value.trim().length > 0;
+  if (!hasText) return;
+
   const now = Date.now();
   if (now - lastTypingBroadcastTime > 1500) {
     lastTypingBroadcastTime = now;
@@ -3323,6 +3331,27 @@ function handleTypingInput() {
       type: 'typing',
       senderRole: getCurrentUserRole()
     });
+
+    // Also send typing status to server for LAN sync
+    const userRole = getCurrentUserRole();
+    if (userRole) {
+      try {
+        const apiUrl = getBackendApiUrl();
+        await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'set-typing-status',
+            userRole: userRole,
+            isTyping: true
+          }),
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
+      } catch (e) {
+        console.warn('Failed to send typing status to server:', e);
+      }
+    }
   }
 }
 
@@ -3377,14 +3406,9 @@ function smartScrollToBottom(force = false) {
   const scrollBtn = document.getElementById('message-scroll-bottom-btn');
   if (!messageList) return;
 
-  const isAtBottom = messageList.scrollHeight - messageList.scrollTop <= messageList.clientHeight + 65;
-
-  if (force || isAtBottom) {
-    messageList.scrollTo({ top: messageList.scrollHeight, behavior: 'smooth' });
-    if (scrollBtn) scrollBtn.hidden = true;
-  } else {
-    if (scrollBtn) scrollBtn.hidden = false;
-  }
+  // Always scroll to bottom when force is true (new message arrived)
+  messageList.scrollTo({ top: messageList.scrollHeight, behavior: 'smooth' });
+  if (scrollBtn) scrollBtn.hidden = true;
 }
 
 function renderAllMessages(forceScrollToBottom = false) {
@@ -3432,9 +3456,8 @@ function renderAllMessages(forceScrollToBottom = false) {
 
   messageList.innerHTML = html;
 
-  if (forceScrollToBottom) {
-    messageList.scrollTop = messageList.scrollHeight;
-  }
+  // Always scroll to bottom when rendering messages
+  messageList.scrollTop = messageList.scrollHeight;
 }
 
 // Backwards-compatible alias for existing callers
@@ -3517,7 +3540,7 @@ function syncMessagesFromBackend(incomingMessages = [], unreadCount = 0) {
   if (hasNew) {
     const popup = document.getElementById('message-popup');
     if (popup && !popup.hidden) {
-      smartScrollToBottom();
+      smartScrollToBottom(true);
       markMessagesAsRead();
     }
   }
@@ -3599,7 +3622,7 @@ async function pollMessages() {
 
         const popup = document.getElementById('message-popup');
         if (popup && !popup.hidden) {
-          smartScrollToBottom();
+          smartScrollToBottom(true);
           if (hasForeignNew) {
             markMessagesAsRead();
           }
@@ -3693,6 +3716,24 @@ async function sendMessage(message) {
   const indicator = document.getElementById('message-typing-indicator');
   if (indicator) indicator.hidden = true;
 
+  // Clear typing status on server when message is sent
+  try {
+    const apiUrl = getBackendApiUrl();
+    await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'set-typing-status',
+        userRole: userRole,
+        isTyping: false
+      }),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    });
+  } catch (e) {
+    // Silently fail
+  }
+
   try {
     const apiUrl = getBackendApiUrl();
     const response = await fetch(apiUrl, {
@@ -3740,11 +3781,41 @@ async function sendMessage(message) {
   }
 }
 
+async function pollTypingStatus() {
+  if (!isAdminAuthenticated() && !isDoctorAuthenticated()) return;
+
+  try {
+    const apiUrl = getBackendApiUrl();
+    const userRole = getCurrentUserRole();
+    if (!userRole) return;
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get-typing-status',
+        userRole: userRole
+      }),
+      credentials: 'same-origin',
+      cache: 'no-store'
+    });
+
+    const data = await response.json();
+    if (data?.success && data.partnerIsTyping) {
+      const senderName = getRoleDisplayName(userRole === 'admin' ? 'doctor' : 'admin');
+      showTypingIndicator(senderName);
+    }
+  } catch (error) {
+    // Silently fail typing status polling
+  }
+}
+
 function startFastMessagePolling() {
   stopFastMessagePolling();
   messagePollInterval = setInterval(() => {
     if (!document.hidden && (isAdminAuthenticated() || isDoctorAuthenticated())) {
       pollMessages();
+      pollTypingStatus();
     }
   }, 800);
 }
@@ -3756,7 +3827,7 @@ function stopFastMessagePolling() {
   }
 }
 
-function toggleMessagePopup(forceOpen = false) {
+async function toggleMessagePopup(forceOpen = false) {
   const messagePopup = document.getElementById('message-popup');
   if (!messagePopup) return;
 
@@ -3764,6 +3835,27 @@ function toggleMessagePopup(forceOpen = false) {
   messagePopup.hidden = !willBeOpen;
 
   if (willBeOpen) {
+    // Clear any existing typing status when opening popup
+    const userRole = getCurrentUserRole();
+    if (userRole) {
+      try {
+        const apiUrl = getBackendApiUrl();
+        await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'set-typing-status',
+            userRole: userRole,
+            isTyping: false
+          }),
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
+      } catch (e) {
+        // Silently fail
+      }
+    }
+
     if (!Array.isArray(state.messages)) state.messages = [];
     updateChatHeaderInfo();
     setupQuickReplies();
@@ -3788,6 +3880,27 @@ function toggleMessagePopup(forceOpen = false) {
     startFastMessagePolling();
   } else {
     stopFastMessagePolling();
+
+    // Clear typing status when popup is closed
+    const userRole = getCurrentUserRole();
+    if (userRole) {
+      try {
+        const apiUrl = getBackendApiUrl();
+        await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'set-typing-status',
+            userRole: userRole,
+            isTyping: false
+          }),
+          credentials: 'same-origin',
+          cache: 'no-store'
+        });
+      } catch (e) {
+        // Silently fail
+      }
+    }
   }
 }
 
@@ -3848,25 +3961,90 @@ function initMessaging() {
     });
   }
 
-  if (scrollBottomBtn) {
-    scrollBottomBtn.addEventListener('click', (event) => {
-      event.stopPropagation();
-      smartScrollToBottom(true);
-    });
-  }
-
-  if (messageList) {
-    messageList.addEventListener('scroll', () => {
-      const isAtBottom = messageList.scrollHeight - messageList.scrollTop <= messageList.clientHeight + 65;
-      if (isAtBottom && scrollBottomBtn) {
-        scrollBottomBtn.hidden = true;
-      }
-    });
-  }
-
   if (messageInput) {
+    let typingTimeout = null;
+
     messageInput.addEventListener('input', () => {
+      // If input is empty, clear typing status immediately
+      if (messageInput.value.trim().length === 0) {
+        if (typingTimeout) {
+          clearTimeout(typingTimeout);
+        }
+        const userRole = getCurrentUserRole();
+        if (userRole) {
+          try {
+            const apiUrl = getBackendApiUrl();
+            fetch(apiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'set-typing-status',
+                userRole: userRole,
+                isTyping: false
+              }),
+              credentials: 'same-origin',
+              cache: 'no-store'
+            });
+          } catch (e) {
+            // Silently fail
+          }
+        }
+        return;
+      }
+
       handleTypingInput();
+
+      // Clear typing status after 3 seconds of no input
+      if (typingTimeout) {
+        clearTimeout(typingTimeout);
+      }
+      typingTimeout = setTimeout(async () => {
+        const userRole = getCurrentUserRole();
+        if (userRole) {
+          try {
+            const apiUrl = getBackendApiUrl();
+            await fetch(apiUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'set-typing-status',
+                userRole: userRole,
+                isTyping: false
+              }),
+              credentials: 'same-origin',
+              cache: 'no-store'
+            });
+          } catch (e) {
+            // Silently fail
+          }
+        }
+      }, 3000);
+    });
+
+    // Clear typing status when input loses focus
+    messageInput.addEventListener('blur', async () => {
+      if (typingTimeout) {
+        clearTimeout(typingTimeout);
+      }
+      const userRole = getCurrentUserRole();
+      if (userRole) {
+        try {
+          const apiUrl = getBackendApiUrl();
+          await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'set-typing-status',
+              userRole: userRole,
+              isTyping: false
+            }),
+            credentials: 'same-origin',
+            cache: 'no-store'
+          });
+        } catch (e) {
+          // Silently fail
+        }
+      }
     });
   }
 
