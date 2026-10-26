@@ -4466,6 +4466,34 @@ function initAdminNavigation() {
   });
 }
 
+// Professional Sidebar Collapse & Tooltip State Manager (Admin & Doctor)
+function initSidebarCollapse() {
+  const sidebar = document.querySelector('.admin-sidebar');
+  const toggleBtn = document.getElementById('sidebar-toggle-btn');
+  if (!sidebar) return;
+
+  // Restore persisted collapse state from localStorage
+  const isSavedCollapsed = localStorage.getItem('rhu_sidebar_collapsed') === 'true';
+  if (isSavedCollapsed) {
+    sidebar.classList.add('collapsed');
+    if (toggleBtn) {
+      toggleBtn.setAttribute('title', 'Expand sidebar');
+      toggleBtn.setAttribute('aria-label', 'Expand sidebar');
+    }
+  }
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const isCollapsed = sidebar.classList.toggle('collapsed');
+      localStorage.setItem('rhu_sidebar_collapsed', isCollapsed ? 'true' : 'false');
+      toggleBtn.setAttribute('title', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+      toggleBtn.setAttribute('aria-label', isCollapsed ? 'Expand sidebar' : 'Collapse sidebar');
+    });
+  }
+}
+
 // Update Dashboard Statistics
 function updateDashboardStats() {
   const queueCount = getWaitingPatients().length;
@@ -4485,6 +4513,19 @@ function updateDashboardStats() {
   if (statServing) statServing.textContent = servingPatient ? `#${servingPatient.queueNumber}` : '---';
   if (statCompleted) statCompleted.textContent = completedToday;
   if (statFollowup) statFollowup.textContent = followUpCount;
+
+  // Real-time Sidebar Badges (Admin & Doctor)
+  const sidebarQueueBadge = document.getElementById('sidebar-queue-badge');
+  const sidebarFollowupBadge = document.getElementById('sidebar-followup-badge');
+
+  if (sidebarQueueBadge) {
+    sidebarQueueBadge.textContent = queueCount;
+    sidebarQueueBadge.hidden = queueCount <= 0;
+  }
+  if (sidebarFollowupBadge) {
+    sidebarFollowupBadge.textContent = followUpCount;
+    sidebarFollowupBadge.hidden = followUpCount <= 0;
+  }
 
   // Update chart
   updateConsultationChart();
@@ -4644,6 +4685,7 @@ function updateConsultationChart() {
 document.addEventListener('DOMContentLoaded', () => {
   if (document.body.classList.contains('admin-body')) {
     initAdminNavigation();
+    initSidebarCollapse();
 
     // Connect logout button with modern confirmation modal
     const logoutBtn = document.getElementById('menu-logout');

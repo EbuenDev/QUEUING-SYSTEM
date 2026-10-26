@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RHU II Doctor Panel</title>
-    <link rel="stylesheet" href="assets/styles.css?v=5.5" />
+    <link rel="stylesheet" href="assets/styles.css?v=6.0" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
@@ -70,31 +70,65 @@
     <div class="admin-layout">
       <!-- Left Sidebar -->
       <aside class="admin-sidebar" hidden>
+        <!-- Sidebar Header with Physician Profile Capsule & Collapse Toggle -->
+        <div class="sidebar-header">
+          <div class="sidebar-user-card">
+            <div class="sidebar-avatar-wrap">
+              <div class="sidebar-avatar doctor-avatar" title="Attending Physician">
+                <i class="fa-solid fa-user-doctor"></i>
+              </div>
+              <span class="sidebar-status-dot online" title="Status: Online & Consulting"></span>
+            </div>
+            <div class="sidebar-user-info">
+              <span class="sidebar-user-role">ATTENDING PHYSICIAN</span>
+              <h4 class="sidebar-user-name">Doc. Renz Sale</h4>
+              <span class="sidebar-user-desc">Clinical Station</span>
+            </div>
+          </div>
+          <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" type="button" title="Collapse sidebar" aria-label="Toggle sidebar collapse">
+            <i class="fa-solid fa-chevron-left"></i>
+          </button>
+        </div>
+
+        <!-- Sidebar Navigation Links -->
         <nav class="sidebar-nav">
-          <button class="nav-item active" data-page="dashboard">
+          <div class="nav-section-title"><span>Main</span></div>
+          <button class="nav-item active" data-page="dashboard" data-tooltip="Overview" title="Overview">
             <span class="nav-icon"><i class="fa-solid fa-chart-pie"></i></span>
             <span class="nav-label">Overview</span>
           </button>
-          <button class="nav-item" data-page="queue">
+
+          <div class="nav-section-title"><span>Clinical Practice</span></div>
+          <button class="nav-item" data-page="queue" data-tooltip="Patient Queue" title="Patient Queue">
             <span class="nav-icon"><i class="fa-solid fa-stethoscope"></i></span>
             <span class="nav-label">Patient Queue</span>
+            <span class="sidebar-badge" id="sidebar-queue-badge" hidden>0</span>
           </button>
-          <button class="nav-item" data-page="followup">
+          <button class="nav-item" data-page="followup" data-tooltip="Follow-up" title="Follow-up">
             <span class="nav-icon"><i class="fa-solid fa-arrows-rotate"></i></span>
             <span class="nav-label">Follow-up</span>
+            <span class="sidebar-badge badge-warning" id="sidebar-followup-badge" hidden>0</span>
           </button>
-          <button class="nav-item" data-page="history">
+
+          <div class="nav-section-title"><span>Records & Rx</span></div>
+          <button class="nav-item" data-page="history" data-tooltip="Consultation History" title="Consultation History">
             <span class="nav-icon"><i class="fa-solid fa-clock-rotate-left"></i></span>
             <span class="nav-label">Consultation History</span>
           </button>
-          <button class="nav-item" data-page="yakap-prescription">
+          <button class="nav-item" data-page="yakap-prescription" data-tooltip="YAKAP Prescription" title="YAKAP Prescription">
             <span class="nav-icon"><i class="fa-solid fa-file-prescription"></i></span>
-            <span class="nav-label">YAKAP PRESCRIPTION</span>
+            <span class="nav-label">YAKAP Prescription</span>
           </button>
         </nav>
+
+        <!-- Sidebar Footer -->
         <div class="sidebar-footer">
-          <button id="menu-logout" class="sidebar-logout-btn" type="button">
-            <span class="nav-icon"><i class="fa-solid fa-right-from-bracket"></i></span>
+          <div class="sidebar-system-status">
+            <span class="sidebar-status-dot online"></span>
+            <span class="system-status-text">RHU II Queue <span class="system-version">v2.5</span></span>
+          </div>
+          <button id="menu-logout" class="sidebar-logout-btn" type="button" title="Sign out of system">
+            <span class="nav-icon"><i class="fa-solid fa-arrow-right-from-bracket"></i></span>
             <span class="nav-label">Logout</span>
           </button>
         </div>
