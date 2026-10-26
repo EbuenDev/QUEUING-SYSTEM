@@ -220,13 +220,22 @@ function setAdminView(isAuthenticated) {
   if (messageBtn) {
     messageBtn.hidden = !isAuthenticated;
   }
+
+  const adminMain = document.querySelector('.admin-main');
+  if (adminMain) {
+    if (!isAuthenticated) {
+      adminMain.classList.add('centered');
+    } else {
+      adminMain.classList.remove('centered');
+    }
+  }
 }
 
 function setDoctorView(isAuthenticated) {
   const loginCard = document.getElementById('doctor-login-card');
   const doctorPanel = document.getElementById('doctor-panel');
   const logoutButton = document.getElementById('doctor-logout-btn');
-  const mainBoard = document.getElementById('doctor-main-board');
+  const mainBoard = document.getElementById('doctor-main-board') || document.querySelector('.admin-main');
   const hamburgerBtn = document.getElementById('hamburger-menu-btn');
   const hamburgerMenu = document.getElementById('hamburger-menu');
   const messageBtn = document.getElementById('message-btn');
@@ -2879,23 +2888,80 @@ function updateLiveClock() {
   }
 }
 
+function initPasswordToggles() {
+  document.querySelectorAll('.auth-toggle-pwd').forEach(btn => {
+    if (btn.dataset.initialized) return;
+    btn.dataset.initialized = 'true';
+
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetId = btn.getAttribute('data-target');
+      const input = targetId ? document.getElementById(targetId) : btn.closest('.auth-input-wrapper')?.querySelector('input');
+      if (!input) return;
+      const icon = btn.querySelector('i');
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.setAttribute('title', 'Hide password');
+        btn.setAttribute('aria-label', 'Hide password');
+        if (icon) {
+          icon.classList.remove('fa-eye');
+          icon.classList.add('fa-eye-slash');
+        }
+      } else {
+        input.type = 'password';
+        btn.setAttribute('title', 'Show password');
+        btn.setAttribute('aria-label', 'Show password');
+        if (icon) {
+          icon.classList.remove('fa-eye-slash');
+          icon.classList.add('fa-eye');
+        }
+      }
+    });
+  });
+}
+
 function initAdminAuth() {
   const loginForm = document.getElementById('admin-login-form');
   const usernameInput = document.getElementById('admin-username');
   const passwordInput = document.getElementById('admin-password');
   const logoutButton = document.getElementById('logout-btn');
 
+  initPasswordToggles();
+
+  // Clear errors when user types
+  [usernameInput, passwordInput].forEach(input => {
+    input?.addEventListener('input', () => showAdminLoginError(''));
+  });
+
   if (loginForm) {
     loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       showAdminLoginError('');
 
+      const submitBtn = loginForm.querySelector('.auth-submit-btn');
+      const btnText = submitBtn?.querySelector('.auth-btn-text');
+      const originalText = btnText ? btnText.textContent : '';
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        if (btnText) btnText.textContent = 'Verifying credentials...';
+      }
+
       const username = usernameInput?.value.trim() || '';
       const password = passwordInput?.value || '';
       const isAuthenticated = await loginAdmin(username, password);
 
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        if (btnText) btnText.textContent = originalText;
+      }
+
       if (!isAuthenticated) {
-        showAdminLoginError('Invalid username or password.');
+        showAdminLoginError('Invalid username or password. Please try again.');
+        if (passwordInput) {
+          passwordInput.value = '';
+          passwordInput.focus();
+        }
       } else {
         loginForm.reset();
       }
@@ -2920,17 +2986,42 @@ function initDoctorAuth() {
   const passwordInput = document.getElementById('doctor-password');
   const logoutButton = document.getElementById('doctor-logout-btn');
 
+  initPasswordToggles();
+
+  // Clear errors when user types
+  [usernameInput, passwordInput].forEach(input => {
+    input?.addEventListener('input', () => showDoctorLoginError(''));
+  });
+
   if (loginForm) {
     loginForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       showDoctorLoginError('');
 
+      const submitBtn = loginForm.querySelector('.auth-submit-btn');
+      const btnText = submitBtn?.querySelector('.auth-btn-text');
+      const originalText = btnText ? btnText.textContent : '';
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        if (btnText) btnText.textContent = 'Verifying credentials...';
+      }
+
       const username = usernameInput?.value.trim() || '';
       const password = passwordInput?.value || '';
       const isAuthenticated = await loginDoctor(username, password);
 
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        if (btnText) btnText.textContent = originalText;
+      }
+
       if (!isAuthenticated) {
-        showDoctorLoginError('Invalid username or password.');
+        showDoctorLoginError('Invalid username or password. Please try again.');
+        if (passwordInput) {
+          passwordInput.value = '';
+          passwordInput.focus();
+        }
       } else {
         loginForm.reset();
         // Reset notification state on successful login

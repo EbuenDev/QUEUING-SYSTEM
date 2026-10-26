@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RHU II Doctor Panel</title>
-    <link rel="stylesheet" href="assets/styles.css?v=6.0" />
+    <link rel="stylesheet" href="assets/styles.css?v=6.1" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
@@ -136,18 +136,95 @@
 
       <!-- Main Content Area -->
       <main class="admin-main" id="doctor-main-board">
-        <!-- Login Card -->
-        <section id="doctor-login-card" class="card auth-card doctor-login-card">
-          <div class="doctor-greeting">
-            <h2>Welcome back!</h2>
-            <p class="doctor-name">Doc. Renz Sale</p>
+        <!-- Login Section -->
+        <section id="doctor-login-card" class="auth-section">
+          <div class="auth-card doctor-card">
+            <!-- Header -->
+            <div class="auth-header">
+              <div class="auth-brand-badge doctor">
+                <img src="assets/logo.png" alt="RHU II Logo" class="auth-brand-logo" />
+              </div>
+              <div class="auth-portal-badge doctor-badge">
+                <i class="fa-solid fa-stethoscope"></i>
+                <span>Physician Console</span>
+              </div>
+              <h2 class="auth-title">Welcome back!</h2>
+              <div class="doctor-greeting-badge">
+                <i class="fa-solid fa-user-doctor"></i>
+                <span class="doctor-name">Doc. Renz Sale</span>
+              </div>
+              <p class="auth-subtitle">Sign in to manage patient consultations & queue triage</p>
+            </div>
+
+            <!-- Error Banner -->
+            <p id="doctor-login-error" class="auth-error" role="alert"></p>
+
+            <!-- Form -->
+            <form id="doctor-login-form" class="auth-form" method="post" action="">
+              <div class="auth-field">
+                <label for="doctor-username" class="auth-label">Username</label>
+                <div class="auth-input-wrapper">
+                  <span class="auth-input-icon"><i class="fa-solid fa-user-doctor"></i></span>
+                  <input
+                    id="doctor-username"
+                    name="username"
+                    type="text"
+                    class="auth-input"
+                    placeholder="Enter doctor username"
+                    autocomplete="username"
+                    required
+                    spellcheck="false"
+                  />
+                </div>
+              </div>
+
+              <div class="auth-field">
+                <div class="auth-field-header">
+                  <label for="doctor-password" class="auth-label">Password</label>
+                </div>
+                <div class="auth-input-wrapper">
+                  <span class="auth-input-icon"><i class="fa-solid fa-lock"></i></span>
+                  <input
+                    id="doctor-password"
+                    name="password"
+                    type="password"
+                    class="auth-input"
+                    placeholder="Enter doctor password"
+                    autocomplete="current-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    class="auth-toggle-pwd"
+                    aria-label="Toggle password visibility"
+                    title="Show password"
+                    data-target="doctor-password"
+                  >
+                    <i class="fa-regular fa-eye"></i>
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" class="auth-submit-btn doctor-btn">
+                <span class="auth-btn-text">Sign In to Doctor Console</span>
+                <span class="auth-btn-icon"><i class="fa-solid fa-arrow-right"></i></span>
+              </button>
+            </form>
+
+            <!-- Card Footer -->
+            <div class="auth-card-footer">
+              <div class="auth-switch-portal">
+                <span class="auth-switch-text">Need administrative console?</span>
+                <a href="admin.html" class="auth-switch-link">Admin Portal <i class="fa-solid fa-arrow-right"></i></a>
+              </div>
+              <div class="auth-divider"></div>
+              <div class="auth-meta-links">
+                <a href="index.html" class="auth-meta-link"><i class="fa-solid fa-tv"></i> Public Display</a>
+                <span class="auth-meta-dot">•</span>
+                <span class="auth-security-badge"><i class="fa-solid fa-shield"></i> Authorized Personnel Only</span>
+              </div>
+            </div>
           </div>
-          <form id="doctor-login-form" class="auth-form" method="post" action="">
-            <input id="doctor-username" name="username" type="text" placeholder="Username" autocomplete="username" required />
-            <input id="doctor-password" name="password" type="password" placeholder="Password" autocomplete="current-password" required />
-            <button type="submit" class="btn btn-primary">Log In</button>
-          </form>
-          <p id="doctor-login-error" class="auth-error" role="alert"></p>
         </section>
 
         <!-- Doctor Panel -->

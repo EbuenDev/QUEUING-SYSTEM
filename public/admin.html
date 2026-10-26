@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>RHU II Admin Panel</title>
-    <link rel="stylesheet" href="assets/styles.css?v=6.0" />
+    <link rel="stylesheet" href="assets/styles.css?v=6.1" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
@@ -147,16 +147,91 @@
 
       <!-- Main Content Area -->
       <main class="admin-main">
-        <!-- Login Card -->
-        <section id="login-card" class="card auth-card">
-          <h2>Admin Login</h2>
-          <p class="muted">Sign in to manage the queue.</p>
-          <form id="admin-login-form" class="auth-form" method="post" action="">
-            <input id="admin-username" name="username" type="text" placeholder="Username" autocomplete="username" required />
-            <input id="admin-password" name="password" type="password" placeholder="Password" autocomplete="current-password" required />
-            <button type="submit" class="btn btn-primary">Log In</button>
-          </form>
-          <p id="login-error" class="auth-error" role="alert"></p>
+        <!-- Login Section -->
+        <section id="login-card" class="auth-section">
+          <div class="auth-card">
+            <!-- Header -->
+            <div class="auth-header">
+              <div class="auth-brand-badge">
+                <img src="assets/logo.png" alt="RHU II Logo" class="auth-brand-logo" />
+              </div>
+              <div class="auth-portal-badge admin-badge">
+                <i class="fa-solid fa-shield-halved"></i>
+                <span>Administrator Console</span>
+              </div>
+              <h2 class="auth-title">Admin Sign In</h2>
+              <p class="auth-subtitle">Sign in to manage queuing, consultations, and operations</p>
+            </div>
+
+            <!-- Error Banner -->
+            <p id="login-error" class="auth-error" role="alert"></p>
+
+            <!-- Form -->
+            <form id="admin-login-form" class="auth-form" method="post" action="">
+              <div class="auth-field">
+                <label for="admin-username" class="auth-label">Username</label>
+                <div class="auth-input-wrapper">
+                  <span class="auth-input-icon"><i class="fa-solid fa-user"></i></span>
+                  <input
+                    id="admin-username"
+                    name="username"
+                    type="text"
+                    class="auth-input"
+                    placeholder="Enter your username"
+                    autocomplete="username"
+                    required
+                    spellcheck="false"
+                  />
+                </div>
+              </div>
+
+              <div class="auth-field">
+                <div class="auth-field-header">
+                  <label for="admin-password" class="auth-label">Password</label>
+                </div>
+                <div class="auth-input-wrapper">
+                  <span class="auth-input-icon"><i class="fa-solid fa-lock"></i></span>
+                  <input
+                    id="admin-password"
+                    name="password"
+                    type="password"
+                    class="auth-input"
+                    placeholder="Enter your password"
+                    autocomplete="current-password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    class="auth-toggle-pwd"
+                    aria-label="Toggle password visibility"
+                    title="Show password"
+                    data-target="admin-password"
+                  >
+                    <i class="fa-regular fa-eye"></i>
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" class="auth-submit-btn admin-btn">
+                <span class="auth-btn-text">Sign In to Admin</span>
+                <span class="auth-btn-icon"><i class="fa-solid fa-arrow-right"></i></span>
+              </button>
+            </form>
+
+            <!-- Card Footer -->
+            <div class="auth-card-footer">
+              <div class="auth-switch-portal">
+                <span class="auth-switch-text">Are you a doctor?</span>
+                <a href="doctor.html" class="auth-switch-link">Doctor Portal <i class="fa-solid fa-arrow-right"></i></a>
+              </div>
+              <div class="auth-divider"></div>
+              <div class="auth-meta-links">
+                <a href="index.html" class="auth-meta-link"><i class="fa-solid fa-tv"></i> Public Display</a>
+                <span class="auth-meta-dot">•</span>
+                <span class="auth-security-badge"><i class="fa-solid fa-shield"></i> Authorized Personnel Only</span>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- Admin Panel -->
