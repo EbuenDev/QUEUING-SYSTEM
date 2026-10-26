@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>RHU II Admin Panel</title>
-    <link rel="stylesheet" href="assets/styles.css?v=6.1" />
+    <link rel="stylesheet" href="assets/styles.css?v=6.3" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
@@ -642,19 +642,29 @@
             <div class="card yakap-table-card">
               <div class="card-header yakap-table-header">
                 <div class="yakap-table-title-group">
-                  <h3>Doctor Uploaded Prescriptions (Converted PNG)</h3>
-                  <span id="yakap-rx-count-pill" class="pill">0 prescriptions</span>
+                  <div class="yakap-table-heading-line">
+                    <i class="fa-solid fa-file-medical table-icon"></i>
+                    <h3>Doctor Uploaded Prescriptions</h3>
+                  </div>
+                  <span id="yakap-rx-count-pill" class="pill yakap-count-pill">0 prescriptions</span>
                 </div>
                 <div class="yakap-filter-row">
                   <div class="yakap-search-wrap">
-                    <i class="fa-solid fa-magnifying-glass"></i>
-                    <input type="text" id="admin-yakap-search" placeholder="Search patient, queue #, Rx#..." />
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="admin-yakap-search" placeholder="Search patient, queue #, Rx#..." autocomplete="off" spellcheck="false" />
+                    <button type="button" id="admin-yakap-search-clear" class="yakap-search-clear" title="Clear search" aria-label="Clear search" hidden>
+                      <i class="fa-solid fa-xmark"></i>
+                    </button>
                   </div>
-                  <select id="admin-yakap-filter" aria-label="Filter status">
-                    <option value="all">All Prescriptions</option>
-                    <option value="active">Pending Print Only</option>
-                    <option value="printed">Printed Only</option>
-                  </select>
+                  <div class="yakap-select-wrap">
+                    <i class="fa-solid fa-filter select-icon"></i>
+                    <select id="admin-yakap-filter" aria-label="Filter status">
+                      <option value="all">All Prescriptions</option>
+                      <option value="active">Pending Print Only</option>
+                      <option value="printed">Printed Only</option>
+                    </select>
+                    <i class="fa-solid fa-chevron-down select-arrow"></i>
+                  </div>
                 </div>
               </div>
 
@@ -810,6 +820,6 @@
     </div>
 
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
-    <script src="assets/app.js?v=5.5"></script>
+    <script src="assets/app.js?v=6.3"></script>
   </body>
 </html>

@@ -5002,17 +5002,17 @@ async function handleDoctorPdfSelection(file) {
 
   // Set converting status UI
   if (conversionStatus) {
-    conversionStatus.className = 'yakap-conversion-status converting';
+    conversionStatus.className = 'yakap-status-badge converting';
     if (conversionText) {
-      conversionText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Converting PDF pages to high-resolution PNG for printing...';
+      conversionText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Converting PDF to PNG...';
     }
   }
 
   if (previewContainer) {
     previewContainer.innerHTML = `
-      <div style="padding: 36px 16px; text-align: center; color: var(--text-muted, #64748b);">
-        <i class="fa-solid fa-spinner fa-spin fa-2x" style="color: #2563eb; margin-bottom: 10px;"></i>
-        <p style="margin: 0; font-size: 0.95rem;">Rendering PDF pages to PNG (High-DPI)...</p>
+      <div style="padding: 30px 16px; text-align: center; color: #94a3b8;">
+        <i class="fa-solid fa-spinner fa-spin fa-2x" style="color: #0284c7; margin-bottom: 10px;"></i>
+        <p style="margin: 0; font-size: 0.9rem;">Rendering PDF pages to PNG (High-DPI)...</p>
       </div>
     `;
   }
@@ -5024,9 +5024,9 @@ async function handleDoctorPdfSelection(file) {
     yakapConvertedPngPages = pages;
 
     if (conversionStatus) {
-      conversionStatus.className = 'yakap-conversion-status success';
+      conversionStatus.className = 'yakap-status-badge success';
       if (conversionText) {
-        conversionText.innerHTML = `<i class="fa-solid fa-circle-check"></i> Converted ${pages.length} page${pages.length > 1 ? 's' : ''} to high-resolution PNG successfully (Ready for Half-A4 Landscape print)`;
+        conversionText.innerHTML = `<i class="fa-solid fa-circle-check"></i> Ready for Print (${pages.length} page${pages.length > 1 ? 's' : ''})`;
       }
     }
 
@@ -5039,11 +5039,8 @@ async function handleDoctorPdfSelection(file) {
       }
 
       previewContainer.innerHTML = `
-        <div class="yakap-png-preview-card" style="cursor: zoom-in; position: relative;" title="Click to view full-resolution PNG">
-          <img src="${primaryPage.dataUrl}" alt="Converted PNG Preview" class="yakap-preview-img" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.12);" />
-          <div style="margin-top: 10px; font-size: 0.85rem; color: #2563eb; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600;">
-            <i class="fa-solid fa-magnifying-glass-plus"></i> Click preview to inspect full size PNG
-          </div>
+        <div class="yakap-png-preview-card" style="cursor: zoom-in; width: 100%; display: flex; align-items: center; justify-content: center;" title="Click to view full-resolution PNG">
+          <img src="${primaryPage.dataUrl}" alt="Converted PNG Preview" class="yakap-preview-img" />
         </div>
       `;
 
@@ -5056,7 +5053,7 @@ async function handleDoctorPdfSelection(file) {
   } catch (err) {
     console.error('PDF Conversion error:', err);
     if (conversionStatus) {
-      conversionStatus.className = 'yakap-conversion-status error';
+      conversionStatus.className = 'yakap-status-badge error';
       if (conversionText) {
         conversionText.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Error converting PDF: ${escapeHtml(err.message || 'Unknown error')}`;
       }
@@ -5086,10 +5083,12 @@ function resetDoctorPdfUpload() {
   const dropError = document.getElementById('yakap-drop-error');
   const previewContainer = document.getElementById('yakap-png-preview-container');
   const sendBtn = document.getElementById('btn-send-prescription-admin');
+  const linkedBadge = document.getElementById('yakap-linked-badge');
 
   if (fileInput) fileInput.value = '';
   if (dropError) dropError.hidden = true;
   if (processingCard) processingCard.hidden = true;
+  if (linkedBadge) linkedBadge.hidden = true;
   if (dropzone) {
     dropzone.style.display = 'block';
     dropzone.classList.remove('dragover');
@@ -5103,6 +5102,71 @@ function resetDoctorPdfUpload() {
   if (patInput) patInput.value = '';
   if (queueInput) queueInput.value = '';
   if (notesInput) notesInput.value = '';
+}
+
+/**
+ * Simple 2-Second Pop-up Notification (Replaces intrusive browser alert dialogs)
+ */
+let yakapPopupTimer = null;
+function showYakapPopup({ title = 'Successfully Uploaded!', message = '', type = 'success', duration = 2000 }) {
+  let popupEl = document.getElementById('yakap-simple-popup');
+  if (!popupEl) {
+    popupEl = document.createElement('div');
+    popupEl.id = 'yakap-simple-popup';
+    popupEl.className = 'yakap-simple-popup';
+    popupEl.setAttribute('aria-live', 'polite');
+    popupEl.innerHTML = `
+      <div class="yakap-popup-card">
+        <div class="yakap-popup-icon-wrap" id="yakap-popup-icon">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <div class="yakap-popup-body">
+          <h4 id="yakap-popup-title">Successfully Uploaded!</h4>
+          <p id="yakap-popup-message"></p>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(popupEl);
+  }
+
+  const iconWrap = popupEl.querySelector('#yakap-popup-icon');
+  const titleEl = popupEl.querySelector('#yakap-popup-title');
+  const msgEl = popupEl.querySelector('#yakap-popup-message');
+
+  if (iconWrap) {
+    iconWrap.className = `yakap-popup-icon-wrap ${type}`;
+    if (type === 'success') {
+      iconWrap.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+    } else if (type === 'error') {
+      iconWrap.innerHTML = '<i class="fa-solid fa-circle-xmark"></i>';
+    } else if (type === 'warning') {
+      iconWrap.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+    } else {
+      iconWrap.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
+    }
+  }
+
+  if (titleEl) titleEl.textContent = title;
+  if (msgEl) {
+    msgEl.textContent = message;
+    msgEl.style.display = message ? 'block' : 'none';
+  }
+
+  if (yakapPopupTimer) {
+    clearTimeout(yakapPopupTimer);
+    yakapPopupTimer = null;
+  }
+
+  popupEl.hidden = false;
+  void popupEl.offsetWidth; // Force reflow for CSS transition
+  popupEl.classList.add('show');
+
+  yakapPopupTimer = setTimeout(() => {
+    popupEl.classList.remove('show');
+    setTimeout(() => {
+      popupEl.hidden = true;
+    }, 250);
+  }, duration);
 }
 
 /**
@@ -5131,6 +5195,7 @@ function linkDoctorServingPatientToYakap(showAlert = false) {
   const serving = getCurrentServingPatient();
   const patInput = document.getElementById('doctor-prescription-patient');
   const queueInput = document.getElementById('doctor-prescription-queue');
+  const linkedBadge = document.getElementById('yakap-linked-badge');
 
   if (serving) {
     if (patInput && (!patInput.value.trim() || showAlert)) {
@@ -5139,14 +5204,29 @@ function linkDoctorServingPatientToYakap(showAlert = false) {
     if (queueInput && (!queueInput.value.trim() || showAlert)) {
       queueInput.value = serving.queueNumber || '';
     }
+    if (linkedBadge) {
+      linkedBadge.hidden = false;
+      linkedBadge.innerHTML = `<i class="fa-solid fa-link"></i> Linked: #${serving.queueNumber} — ${escapeHtml(serving.name)}`;
+    }
     updateDoctorServingBadge();
     if (showAlert) {
-      alert(`Linked patient #${serving.queueNumber} — ${serving.name} to this prescription.`);
+      showYakapPopup({
+        title: 'Patient Linked',
+        message: `Linked patient #${serving.queueNumber} — ${serving.name} to this prescription`,
+        type: 'info',
+        duration: 2000
+      });
     }
   } else {
+    if (linkedBadge) linkedBadge.hidden = true;
     updateDoctorServingBadge();
     if (showAlert) {
-      alert('No patient is currently being served. You can enter the patient name manually.');
+      showYakapPopup({
+        title: 'No Active Patient',
+        message: 'No patient is currently serving. Please enter the name manually.',
+        type: 'warning',
+        duration: 2000
+      });
     }
   }
 }
@@ -5156,7 +5236,12 @@ function linkDoctorServingPatientToYakap(showAlert = false) {
  */
 async function sendPrescriptionToAdmin() {
   if (!yakapSelectedPdfFile || !yakapConvertedPngPages || yakapConvertedPngPages.length === 0) {
-    alert('Please select and convert a PDF prescription first.');
+    showYakapPopup({
+      title: 'No PDF Selected',
+      message: 'Please drop or browse a valid PDF prescription first.',
+      type: 'warning',
+      duration: 2000
+    });
     return;
   }
 
@@ -5167,7 +5252,12 @@ async function sendPrescriptionToAdmin() {
 
   const patientName = patientInput?.value?.trim() || '';
   if (!patientName) {
-    alert('Please enter the patient name for this prescription.');
+    showYakapPopup({
+      title: 'Patient Name Required',
+      message: 'Please enter the patient name before sending.',
+      type: 'warning',
+      duration: 2000
+    });
     patientInput?.focus();
     return;
   }
@@ -5177,7 +5267,7 @@ async function sendPrescriptionToAdmin() {
 
   const originalBtnHtml = sendBtn.innerHTML;
   sendBtn.disabled = true;
-  sendBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending Converted PNG to Admin...';
+  sendBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending to Admin...';
 
   try {
     let pdfBase64 = '';
@@ -5213,16 +5303,32 @@ async function sendPrescriptionToAdmin() {
         broadcastPrescriptions(data.prescriptions);
       }
 
-      alert(`Prescription for ${patientName} uploaded and converted to PNG successfully!\nAdmin desk has received it and can now print on landscape half-A4 paper.`);
+      // Simple 2-Second Pop-up Notification (Success)
+      showYakapPopup({
+        title: 'Successfully Uploaded!',
+        message: `Prescription for ${patientName} sent to Admin & Pharmacy`,
+        type: 'success',
+        duration: 2000
+      });
 
       resetDoctorPdfUpload();
       renderDoctorPrescriptions();
     } else {
-      alert(`Failed to upload prescription: ${data?.message || 'Server error'}`);
+      showYakapPopup({
+        title: 'Upload Failed',
+        message: data?.message || 'Server error while sending prescription',
+        type: 'error',
+        duration: 2000
+      });
     }
   } catch (err) {
     console.error('Error sending prescription to admin:', err);
-    alert('Failed to send prescription. Check network or server connection.');
+    showYakapPopup({
+      title: 'Send Error',
+      message: 'Check network or server connection.',
+      type: 'error',
+      duration: 2000
+    });
   } finally {
     if (sendBtn) {
       sendBtn.disabled = false;
@@ -5442,11 +5548,27 @@ function renderAdminPrescriptions() {
   const dispensedStat = document.getElementById('stat-yakap-dispensed');
   const countPill = document.getElementById('yakap-rx-count-pill');
   const searchInput = document.getElementById('admin-yakap-search');
+  const searchClearBtn = document.getElementById('admin-yakap-search-clear');
   const filterSelect = document.getElementById('admin-yakap-filter');
 
   if (!tableBody) return;
 
   const prescriptions = Array.isArray(state.prescriptions) ? state.prescriptions : [];
+
+  // Toggle clear button
+  if (searchClearBtn && searchInput) {
+    searchClearBtn.hidden = !searchInput.value.trim();
+  }
+
+  // Update active filter wrap highlight
+  const filterWrap = filterSelect?.closest('.yakap-select-wrap');
+  if (filterWrap && filterSelect) {
+    if (filterSelect.value && filterSelect.value !== 'all') {
+      filterWrap.classList.add('has-filter');
+    } else {
+      filterWrap.classList.remove('has-filter');
+    }
+  }
 
   // Calculate stats
   const totalCount = prescriptions.length;
@@ -5690,6 +5812,7 @@ function openImageViewModal(imgSrc, title = 'Prescription Preview') {
  */
 function initAdminYakapPrescription() {
   const searchInput = document.getElementById('admin-yakap-search');
+  const searchClearBtn = document.getElementById('admin-yakap-search-clear');
   const filterSelect = document.getElementById('admin-yakap-filter');
   const refreshBtn = document.getElementById('btn-refresh-prescriptions');
   const triggerPrintBtn = document.getElementById('btn-trigger-half-a4-print');
@@ -5700,13 +5823,36 @@ function initAdminYakapPrescription() {
   if (searchInput && !searchInput.dataset.initialized) {
     searchInput.dataset.initialized = 'true';
     searchInput.addEventListener('input', () => {
+      if (searchClearBtn) {
+        searchClearBtn.hidden = !searchInput.value.trim();
+      }
       renderAdminPrescriptions();
+    });
+  }
+
+  if (searchClearBtn && !searchClearBtn.dataset.initialized) {
+    searchClearBtn.dataset.initialized = 'true';
+    searchClearBtn.addEventListener('click', () => {
+      if (searchInput) {
+        searchInput.value = '';
+        searchClearBtn.hidden = true;
+        searchInput.focus();
+        renderAdminPrescriptions();
+      }
     });
   }
 
   if (filterSelect && !filterSelect.dataset.initialized) {
     filterSelect.dataset.initialized = 'true';
     filterSelect.addEventListener('change', () => {
+      const wrap = filterSelect.closest('.yakap-select-wrap');
+      if (wrap) {
+        if (filterSelect.value && filterSelect.value !== 'all') {
+          wrap.classList.add('has-filter');
+        } else {
+          wrap.classList.remove('has-filter');
+        }
+      }
       renderAdminPrescriptions();
     });
   }
