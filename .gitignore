@@ -1,6 +1,7 @@
 # Environment variables
 .env
 .env.*
+!.env.example
 
 # Patient/queue data
 backend/queue.json
@@ -15,10 +16,6 @@ queue_cookie.txt
 # OS files
 .DS_Store
 Thumbs.db
-
-# Sensitive configuration
-backend/config.php
-backend/Database.php
 
 # PostgreSQL data directories
 postgres_data/

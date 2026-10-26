@@ -15,10 +15,12 @@ CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_is_read ON messages(is_read);
 
 -- Add check constraints for data integrity
+ALTER TABLE messages DROP CONSTRAINT IF EXISTS chk_sender_role;
 ALTER TABLE messages
 ADD CONSTRAINT chk_sender_role
 CHECK (sender_role IN ('admin', 'doctor'));
 
+ALTER TABLE messages DROP CONSTRAINT IF EXISTS chk_receiver_role;
 ALTER TABLE messages
 ADD CONSTRAINT chk_receiver_role
 CHECK (receiver_role IN ('admin', 'doctor'));

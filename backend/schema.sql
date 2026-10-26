@@ -85,8 +85,10 @@ END;
 $$ language 'plpgsql';
 
 -- Create triggers for automatic updated_at
+DROP TRIGGER IF EXISTS update_patients_updated_at ON patients;
 CREATE TRIGGER update_patients_updated_at BEFORE UPDATE ON patients
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_queue_management_updated_at ON queue_management;
 CREATE TRIGGER update_queue_management_updated_at BEFORE UPDATE ON queue_management
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

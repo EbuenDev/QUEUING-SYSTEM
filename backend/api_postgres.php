@@ -3,6 +3,10 @@
 // PostgreSQL-based API for RHU II Patient Queuing System
 header('Content-Type: application/json');
 
+require_once __DIR__ . '/Database.php';
+require_once __DIR__ . '/config.php';
+$config = require __DIR__ . '/config.php';
+
 // CORS configuration for LAN access
 // Set allowed origins - configure via ALLOWED_ORIGINS env var or default to all for LAN
 $allowedOrigins = getenv('ALLOWED_ORIGINS') ? explode(',', getenv('ALLOWED_ORIGINS')) : ['*'];
@@ -30,11 +34,6 @@ if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
-
-require_once __DIR__ . '/Database.php';
-require_once __DIR__ . '/config.php';
-
-$config = require __DIR__ . '/config.php';
 
 $adminUsername = $config['admin_username'];
 $adminPassword = $config['admin_password'];

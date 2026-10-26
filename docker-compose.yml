@@ -3,15 +3,15 @@ services:
     build: .
     container_name: rhu-queue-web
     ports:
-      - "0.0.0.0:8081:80"  # Bind to all interfaces for LAN access (port 8081 to avoid Laragon conflict)
+      - "0.0.0.0:${APP_PORT:-8081}:80"  # Bind to all interfaces for LAN access (port 8081 to avoid Laragon conflict)
     volumes:
-      - ./:/var/www/html # Add this line to mount the current directory to /var/www/html in the container
+      - ./:/var/www/html # Mount the current directory to /var/www/html in the container
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
       - DB_NAME=${DB_NAME:-rhu_queue_system}
       - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-*}
       - TZ=Asia/Manila
     depends_on:
@@ -24,10 +24,12 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: rhu-queue-postgres
+    ports:
+      - "127.0.0.1:5432:5432"  # Exposed to host for pgAdmin/local scripts
     environment:
       - POSTGRES_DB=${DB_NAME:-rhu_queue_system}
       - POSTGRES_USER=${DB_USER:-postgres}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
       - TZ=Asia/Manila
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -36,6 +38,9 @@ services:
       - ./backend/migration_users.sql:/docker-entrypoint-initdb.d/03-migration.sql
       - ./backend/migration_notifications.sql:/docker-entrypoint-initdb.d/04-migration.sql
       - ./backend/migration_video_config.sql:/docker-entrypoint-initdb.d/05-migration.sql
+      - ./backend/migration_playlist_library.sql:/docker-entrypoint-initdb.d/06-migration.sql
+      - ./backend/migration_add_messages.sql:/docker-entrypoint-initdb.d/07-migration.sql
+      - ./backend/migration_prescriptions.sql:/docker-entrypoint-initdb.d/08-migration.sql
     networks:
       - rhu-network
     healthcheck:

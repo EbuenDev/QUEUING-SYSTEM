@@ -20,5 +20,6 @@ VALUES ('', '', '', false, 'system')
 ON CONFLICT (id) DO NOTHING;
 
 -- Create trigger for updated_at
+DROP TRIGGER IF EXISTS update_video_config_updated_at ON video_config;
 CREATE TRIGGER update_video_config_updated_at BEFORE UPDATE ON video_config
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
