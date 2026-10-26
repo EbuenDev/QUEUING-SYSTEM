@@ -609,6 +609,59 @@
       </div>
     </div>
 
+    <!-- Dedicated A4 Landscape Print Modal (Prescription on Left Half) -->
+    <div id="yakap-half-a4-print-modal" class="modern-modal-overlay" hidden aria-hidden="true">
+      <div class="yakap-print-dialog" role="dialog" aria-modal="true" aria-labelledby="print-modal-title">
+        <div class="yakap-print-modal-header no-print">
+          <div class="print-header-info">
+            <h3 id="print-modal-title"><i class="fa-solid fa-print"></i> Print Prescription</h3>
+            <p class="print-format-tag"><i class="fa-solid fa-circle-check"></i> Paper: A4 Landscape — Left Half GAMOT Prescription Format (ANNEX F)</p>
+          </div>
+          <div class="print-header-actions">
+            <!-- Mode Toggle: 1 Copy vs 2 Copies -->
+            <div class="print-mode-toggle" title="Select print mode">
+              <button type="button" id="btn-print-mode-single" class="print-toggle-btn active" title="Print 1 copy on left half (Right half blank as per GAMOT standard)">
+                <i class="fa-solid fa-file"></i> Left Half Only
+              </button>
+              <button type="button" id="btn-print-mode-dual" class="print-toggle-btn" title="Print 2 copies side-by-side on A4 sheet">
+                <i class="fa-solid fa-copy"></i> 2 Copies (Side-by-Side)
+              </button>
+            </div>
+            <button type="button" id="btn-trigger-half-a4-print" class="btn btn-primary btn-lg">
+              <i class="fa-solid fa-print"></i> Print Now (A4 Landscape)
+            </button>
+            <button type="button" id="btn-close-print-modal" class="btn btn-secondary">
+              <i class="fa-solid fa-xmark"></i> Close
+            </button>
+          </div>
+        </div>
+
+        <div class="yakap-print-body">
+          <!-- The Authentic A4 Landscape Sheet (297mm x 210mm) -->
+          <div class="yakap-a4-paper-sheet" id="yakap-printable-a4">
+            <!-- Left Half: Prescription with dashed frame -->
+            <div class="yakap-a4-half-left">
+              <div class="yakap-rx-dashed-frame">
+                <img id="yakap-print-png-img" class="yakap-rx-img" src="" alt="YAKAP Prescription" />
+              </div>
+            </div>
+
+            <!-- Right Half: Blank by default or Duplicate Copy -->
+            <div class="yakap-a4-half-right">
+              <div id="yakap-right-duplicate-frame" class="yakap-rx-dashed-frame" style="display: none;">
+                <img id="yakap-print-png-img-copy" class="yakap-rx-img" src="" alt="YAKAP Prescription Copy" />
+              </div>
+              <div id="yakap-right-blank-hint" class="yakap-fold-guide-hint no-print">
+                <i class="fa-solid fa-scissors"></i>
+                <span>Center Cut / Fold Line</span>
+                <p>Prescription prints on the left half of the A4 Landscape sheet. The right half remains blank as per the official PhilHealth GAMOT format.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Modern Logout Confirmation Modal -->
     <div id="logout-confirm-modal" class="modern-modal-overlay" hidden aria-hidden="true">
       <div class="modern-modal-card" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
@@ -631,6 +684,6 @@
       </div>
     </div>
 
-    <script src="assets/app.js?v=5.5"></script>
+    <script src="assets/app.js?v=5.7"></script>
   </body>
 </html>

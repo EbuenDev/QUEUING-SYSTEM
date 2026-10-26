@@ -5389,29 +5389,205 @@ iframe.youtube-player,
   gap: 10px;
 }
 
-/* The Screen Preview of Half-A4 Paper in Landscape Mode */
-.yakap-half-a4-paper-sheet {
-  width: 100%;
-  max-width: 780px;
-  /* Exactly Aspect Ratio of 210mm : 148.5mm = 1.414 */
-  aspect-ratio: 210 / 148.5;
-  background: #ffffff;
-  margin: 24px auto;
+.yakap-print-dialog {
+  background: #0f172a;
+  border-radius: 16px;
+  width: 95%;
+  max-width: 980px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.yakap-print-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: #0f172a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.print-header-info h3 {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.print-header-info h3 i {
+  color: #38bdf8;
+}
+
+.print-format-tag {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.print-format-tag i {
+  color: #34d399;
+}
+
+.print-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.print-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  gap: 2px;
+}
+
+.print-toggle-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 12px;
   border-radius: 6px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.print-toggle-btn:hover {
+  color: #ffffff;
+}
+
+.print-toggle-btn.active {
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+}
+
+.yakap-print-body {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  background: #090d16;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+}
+
+/* Screen Preview of Full A4 Landscape Sheet (297 : 210 ratio) */
+.yakap-a4-paper-sheet,
+.yakap-half-a4-paper-sheet {
+  width: 100%;
+  max-width: 860px;
+  aspect-ratio: 297 / 210;
+  background: #ffffff;
+  margin: 0 auto;
+  border-radius: 4px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 16px 18px;
+  gap: 16px;
+  box-sizing: border-box;
   position: relative;
+  overflow: hidden;
   border: 1px solid #cbd5e1;
 }
 
+.yakap-a4-half-left {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.yakap-rx-dashed-frame {
+  width: 100%;
+  height: 100%;
+  border: 1.5px dashed #60a5fa;
+  border-radius: 2px;
+  padding: 8px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  position: relative;
+}
+
+.yakap-rx-img,
 .yakap-half-a4-img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   display: block;
+}
+
+.yakap-a4-half-right {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  position: relative;
+  background: #ffffff;
+}
+
+.yakap-fold-guide-hint {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #e2e8f0;
+  border-radius: 2px;
+  background: #fafafa;
+  color: #94a3b8;
+  text-align: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.yakap-fold-guide-hint i {
+  font-size: 1.4rem;
+  color: #64748b;
+  margin-bottom: 8px;
+}
+
+.yakap-fold-guide-hint span {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.yakap-fold-guide-hint p {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  max-width: 240px;
+  line-height: 1.4;
 }
 
 /* Full Image Viewer Dialog */
@@ -5464,23 +5640,22 @@ iframe.youtube-player,
 }
 
 /* ==========================================================================
-   CSS @MEDIA PRINT: EXACT HALF-A4 LANDSCAPE PRINT RULES
-   Paper: A5 Landscape (210mm × 148.5mm - Half of A4)
+   CSS @MEDIA PRINT: EXACT A4 LANDSCAPE WITH LEFT-HALF GAMOT PRESCRIPTION
+   Standard A4 Paper: 297mm × 210mm
    ========================================================================== */
 
 @page {
-  size: A5 landscape;
+  size: A4 landscape;
   margin: 0;
 }
 
 @media print {
-  /* Hide all UI elements, topbar, navigation, chat, modal chrome */
   html, body {
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
-    width: 100% !important;
-    height: 100% !important;
+    width: 297mm !important;
+    height: 210mm !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -5489,7 +5664,6 @@ iframe.youtube-player,
     visibility: hidden !important;
   }
 
-  /* Make only the Half-A4 print modal visible */
   #yakap-half-a4-print-modal,
   #yakap-half-a4-print-modal * {
     visibility: visible !important;
@@ -5499,14 +5673,12 @@ iframe.youtube-player,
     position: fixed !important;
     left: 0 !important;
     top: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
+    width: 297mm !important;
+    height: 210mm !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+    display: block !important;
     z-index: 9999999 !important;
   }
 
@@ -5515,14 +5687,13 @@ iframe.youtube-player,
     box-shadow: none !important;
     border: none !important;
     border-radius: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    height: 100% !important;
+    width: 297mm !important;
+    height: 210mm !important;
+    max-width: 297mm !important;
+    max-height: 210mm !important;
     margin: 0 !important;
     padding: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+    display: block !important;
   }
 
   .no-print {
@@ -5530,30 +5701,91 @@ iframe.youtube-player,
     visibility: hidden !important;
   }
 
-  /* The printable Half-A4 Sheet: exactly 210mm wide x 148.5mm high */
-  .yakap-half-a4-paper-sheet {
-    width: 210mm !important;
-    height: 148.5mm !important;
-    max-width: 210mm !important;
-    max-height: 148.5mm !important;
-    box-shadow: none !important;
-    border: none !important;
-    border-radius: 0 !important;
-    margin: 0 auto !important;
+  .yakap-print-body {
     padding: 0 !important;
+    margin: 0 !important;
     background: #ffffff !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  /* Full A4 Landscape Sheet: 297mm wide x 210mm high */
+  .yakap-a4-paper-sheet,
+  .yakap-half-a4-paper-sheet {
+    width: 297mm !important;
+    height: 210mm !important;
+    max-width: 297mm !important;
+    max-height: 210mm !important;
+    margin: 0 !important;
+    padding: 4mm 6mm !important;
+    box-sizing: border-box !important;
+    display: grid !important;
+    grid-template-columns: 140mm 140mm !important;
+    gap: 5mm !important;
+    background: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
     page-break-inside: avoid !important;
     page-break-after: avoid !important;
   }
 
+  .yakap-a4-half-left {
+    width: 140mm !important;
+    height: 202mm !important;
+    max-height: 202mm !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+  }
+
+  .yakap-rx-dashed-frame {
+    border: 1.5px dashed #60a5fa !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 200mm !important;
+    padding: 3mm !important;
+    box-sizing: border-box !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .yakap-rx-img,
   .yakap-half-a4-img {
     width: 100% !important;
     height: 100% !important;
+    max-height: 194mm !important;
     object-fit: contain !important;
     display: block !important;
+  }
+
+  .yakap-a4-half-right {
+    width: 140mm !important;
+    height: 202mm !important;
+    max-height: 202mm !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    background: #ffffff !important;
+  }
+
+  .yakap-a4-paper-sheet.dual-copy .yakap-a4-half-right .yakap-rx-dashed-frame {
+    display: flex !important;
+  }
+
+  .yakap-a4-paper-sheet:not(.dual-copy) .yakap-a4-half-right .yakap-rx-dashed-frame {
+    display: none !important;
+  }
+
+  .yakap-fold-guide-hint {
+    display: none !important;
+    visibility: hidden !important;
   }
 }
 

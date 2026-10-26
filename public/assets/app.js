@@ -3138,34 +3138,62 @@ document.addEventListener('DOMContentLoaded', () => {
   updateLiveClock();
   setInterval(updateLiveClock, 1000);
 
-  if (document.getElementById('patient-list')) {
-    initAdminPage();
-  }
-
+  // Initialize Authentication first so login forms and password toggles always work immediately
   if (document.getElementById('admin-login-form')) {
-    initAdminAuth();
-  }
-
-  if (document.getElementById('bhw-add-form')) {
-    initBhwPage();
-  }
-
-  if (document.getElementById('doctor-patient-list')) {
-    initDoctorPage();
+    try {
+      initAdminAuth();
+    } catch (e) {
+      console.error('Error initializing admin auth:', e);
+    }
   }
 
   if (document.getElementById('doctor-login-form')) {
-    initDoctorAuth();
+    try {
+      initDoctorAuth();
+    } catch (e) {
+      console.error('Error initializing doctor auth:', e);
+    }
+  }
+
+  if (document.getElementById('patient-list')) {
+    try {
+      initAdminPage();
+    } catch (e) {
+      console.error('Error initializing admin page:', e);
+    }
+  }
+
+  if (document.getElementById('bhw-add-form')) {
+    try {
+      initBhwPage();
+    } catch (e) {
+      console.error('Error initializing BHW page:', e);
+    }
+  }
+
+  if (document.getElementById('doctor-patient-list')) {
+    try {
+      initDoctorPage();
+    } catch (e) {
+      console.error('Error initializing doctor page:', e);
+    }
   }
 
   if (document.getElementById('hamburger-menu-btn')) {
-    initHamburgerMenu();
+    try {
+      initHamburgerMenu();
+    } catch (e) {
+      console.error('Error initializing hamburger menu:', e);
+    }
   }
 
   if (document.getElementById('message-btn')) {
-    initMessaging();
+    try {
+      initMessaging();
+    } catch (e) {
+      console.error('Error initializing messaging:', e);
+    }
   }
-
 });
 
 // ============================================================================
@@ -5290,6 +5318,9 @@ function renderDoctorPrescriptions() {
         </td>
         <td>
           <div style="display: flex; gap: 6px;">
+            <button type="button" class="btn btn-primary btn-sm btn-print-doctor-rx" data-rx-id="${rx.id}" title="Print on A4 Landscape (Left Half GAMOT format)">
+              <i class="fa-solid fa-print"></i> Print (A4)
+            </button>
             <button type="button" class="btn btn-secondary btn-sm btn-view-doctor-rx" data-rx-id="${rx.id}" title="View Converted PNG">
               <i class="fa-solid fa-eye"></i> View PNG
             </button>
@@ -5416,6 +5447,13 @@ function initDoctorYakapPrescription() {
   if (doctorTable && !doctorTable.dataset.initialized) {
     doctorTable.dataset.initialized = 'true';
     doctorTable.addEventListener('click', (e) => {
+      const printBtn = e.target.closest('.btn-print-doctor-rx');
+      if (printBtn) {
+        const rxId = printBtn.dataset.rxId;
+        openHalfA4PrintModal(rxId);
+        return;
+      }
+
       const viewBtn = e.target.closest('.btn-view-doctor-rx');
       const thumbWrap = e.target.closest('.yakap-table-thumb-wrap');
       if (viewBtn || thumbWrap) {
@@ -5428,6 +5466,8 @@ function initDoctorYakapPrescription() {
       }
     });
   }
+
+  initPrescriptionPrintModalControls();
 
   renderDoctorPrescriptions();
 }
@@ -5537,7 +5577,7 @@ function renderAdminPrescriptions() {
 }
 
 /**
- * Opens dedicated Half-A4 Landscape print preview modal
+ * Opens dedicated A4 Landscape print preview modal (Left Half GAMOT format)
  */
 function openHalfA4PrintModal(rxId) {
   const rx = state.prescriptions.find((p) => String(p.id) === String(rxId));
@@ -5549,6 +5589,7 @@ function openHalfA4PrintModal(rxId) {
   yakapCurrentPrintingRxId = rx.id;
   const modal = document.getElementById('yakap-half-a4-print-modal');
   const printImg = document.getElementById('yakap-print-png-img');
+  const printImgCopy = document.getElementById('yakap-print-png-img-copy');
   const modalTitle = document.getElementById('print-modal-title');
 
   const pngUrl = getPrescriptionPngUrl(rx);
@@ -5556,10 +5597,17 @@ function openHalfA4PrintModal(rxId) {
     printImg.src = pngUrl;
     printImg.alt = `Prescription ${rx.rxNumber} - ${rx.patientName}`;
   }
+  if (printImgCopy) {
+    printImgCopy.src = pngUrl;
+    printImgCopy.alt = `Prescription Copy ${rx.rxNumber} - ${rx.patientName}`;
+  }
 
   if (modalTitle) {
     modalTitle.innerHTML = `<i class="fa-solid fa-print"></i> Print Prescription: <strong>${escapeHtml(rx.patientName)}</strong> (#${escapeHtml(rx.rxNumber)})`;
   }
+
+  // Ensure default is 1 Copy on Left Half (PhilHealth GAMOT template)
+  setPrescriptionPrintMode('single');
 
   if (modal) {
     modal.hidden = false;
@@ -5568,13 +5616,82 @@ function openHalfA4PrintModal(rxId) {
 }
 
 /**
- * Triggers landscape half of an A4 paper print and marks status as 'printed' in database
+ * Toggles between single copy (left half only) and dual copy (2 copies side-by-side)
+ */
+function setPrescriptionPrintMode(mode) {
+  const sheet = document.getElementById('yakap-printable-a4');
+  const btnSingle = document.getElementById('btn-print-mode-single');
+  const btnDual = document.getElementById('btn-print-mode-dual');
+  const rightFrame = document.getElementById('yakap-right-duplicate-frame');
+  const rightHint = document.getElementById('yakap-right-blank-hint');
+
+  if (mode === 'dual') {
+    if (sheet) sheet.classList.add('dual-copy');
+    if (btnSingle) btnSingle.classList.remove('active');
+    if (btnDual) btnDual.classList.add('active');
+    if (rightFrame) rightFrame.style.display = 'flex';
+    if (rightHint) rightHint.style.display = 'none';
+  } else {
+    if (sheet) sheet.classList.remove('dual-copy');
+    if (btnSingle) btnSingle.classList.add('active');
+    if (btnDual) btnDual.classList.remove('active');
+    if (rightFrame) rightFrame.style.display = 'none';
+    if (rightHint) rightHint.style.display = 'flex';
+  }
+}
+
+/**
+ * Shared initialization of print modal controls
+ */
+function initPrescriptionPrintModalControls() {
+  const triggerPrintBtn = document.getElementById('btn-trigger-half-a4-print');
+  const closePrintModalBtn = document.getElementById('btn-close-print-modal');
+  const printModal = document.getElementById('yakap-half-a4-print-modal');
+  const btnSingle = document.getElementById('btn-print-mode-single');
+  const btnDual = document.getElementById('btn-print-mode-dual');
+
+  if (triggerPrintBtn && !triggerPrintBtn.dataset.initialized) {
+    triggerPrintBtn.dataset.initialized = 'true';
+    triggerPrintBtn.addEventListener('click', triggerHalfA4Print);
+  }
+
+  if (btnSingle && !btnSingle.dataset.initialized) {
+    btnSingle.dataset.initialized = 'true';
+    btnSingle.addEventListener('click', () => setPrescriptionPrintMode('single'));
+  }
+
+  if (btnDual && !btnDual.dataset.initialized) {
+    btnDual.dataset.initialized = 'true';
+    btnDual.addEventListener('click', () => setPrescriptionPrintMode('dual'));
+  }
+
+  if (closePrintModalBtn && printModal && !closePrintModalBtn.dataset.initialized) {
+    closePrintModalBtn.dataset.initialized = 'true';
+    closePrintModalBtn.addEventListener('click', () => {
+      printModal.classList.remove('active');
+      setTimeout(() => { printModal.hidden = true; }, 200);
+    });
+  }
+
+  if (printModal && !printModal.dataset.clickInit) {
+    printModal.dataset.clickInit = 'true';
+    printModal.addEventListener('click', (e) => {
+      if (e.target === printModal) {
+        printModal.classList.remove('active');
+        setTimeout(() => { printModal.hidden = true; }, 200);
+      }
+    });
+  }
+}
+
+/**
+ * Triggers A4 Landscape paper print and marks status as 'printed' in database
  */
 async function triggerHalfA4Print() {
   if (!yakapCurrentPrintingRxId) return;
   const rxId = yakapCurrentPrintingRxId;
 
-  // Trigger browser print dialog for Half-A4 Landscape print
+  // Trigger browser print dialog for A4 Landscape print
   window.print();
 
   // Mark prescription as printed in database
@@ -5692,10 +5809,9 @@ function initAdminYakapPrescription() {
   const searchInput = document.getElementById('admin-yakap-search');
   const filterSelect = document.getElementById('admin-yakap-filter');
   const refreshBtn = document.getElementById('btn-refresh-prescriptions');
-  const triggerPrintBtn = document.getElementById('btn-trigger-half-a4-print');
-  const closePrintModalBtn = document.getElementById('btn-close-print-modal');
-  const printModal = document.getElementById('yakap-half-a4-print-modal');
   const adminTable = document.getElementById('admin-yakap-prescriptions-table-body');
+
+  initPrescriptionPrintModalControls();
 
   if (searchInput && !searchInput.dataset.initialized) {
     searchInput.dataset.initialized = 'true';
@@ -5720,19 +5836,6 @@ function initAdminYakapPrescription() {
       setTimeout(() => {
         if (icon) icon.classList.remove('fa-spin');
       }, 500);
-    });
-  }
-
-  if (triggerPrintBtn && !triggerPrintBtn.dataset.initialized) {
-    triggerPrintBtn.dataset.initialized = 'true';
-    triggerPrintBtn.addEventListener('click', triggerHalfA4Print);
-  }
-
-  if (closePrintModalBtn && printModal && !closePrintModalBtn.dataset.initialized) {
-    closePrintModalBtn.dataset.initialized = 'true';
-    closePrintModalBtn.addEventListener('click', () => {
-      printModal.classList.remove('active');
-      setTimeout(() => { printModal.hidden = true; }, 200);
     });
   }
 
