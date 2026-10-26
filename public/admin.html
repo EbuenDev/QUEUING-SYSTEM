@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>RHU II Admin Panel</title>
     <link rel="stylesheet" href="assets/styles.css?v=5.5" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
@@ -311,12 +312,12 @@
               <form id="video-config-form" method="post" action="">
                 <div class="video-form-layout">
                   <div class="video-form-field">
-                    <label for="video-playlist-url" class="video-field-label">YouTube Playlist URL</label>
+                    <label for="video-playlist-url" class="video-field-label">YouTube Playlist / Video URL(s)</label>
                     <div class="video-input-group">
                       <span class="video-input-icon"><i class="fa-brands fa-youtube"></i></span>
-                      <input id="video-playlist-url" name="playlistUrl" type="url" placeholder="https://www.youtube.com/playlist?list=PLxxxxxx" />
+                      <input id="video-playlist-url" name="playlistUrl" type="text" placeholder="Playlist URL, single video URL, or multiple video URLs (comma-separated)" />
                     </div>
-                    <small class="video-field-hint">Paste a YouTube playlist URL. The system will extract the playlist ID automatically.</small>
+                    <small class="video-field-hint">Paste a YouTube Playlist URL, a single video, or multiple videos separated by commas. The system configures playback automatically.</small>
                   </div>
                   <div class="video-form-row">
                     <div class="video-form-field">

@@ -471,9 +471,9 @@ function loadVideoConfig(?PDO $db): array {
         // Create table if it does not exist
         $db->exec("CREATE TABLE IF NOT EXISTS video_config (
             id INT PRIMARY KEY DEFAULT 1,
-            playlist_id VARCHAR(100),
+            playlist_id TEXT,
             playlist_title VARCHAR(255),
-            playlist_url VARCHAR(500),
+            playlist_url TEXT,
             is_enabled BOOLEAN DEFAULT FALSE,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_by VARCHAR(50),
@@ -482,8 +482,10 @@ function loadVideoConfig(?PDO $db): array {
             is_paused BOOLEAN DEFAULT FALSE
         )");
 
-        // Add columns if table already existed without them
+        // Add columns and migrate column types if table already existed
         try {
+            $db->exec("ALTER TABLE video_config ALTER COLUMN playlist_id TYPE TEXT");
+            $db->exec("ALTER TABLE video_config ALTER COLUMN playlist_url TYPE TEXT");
             $db->exec("ALTER TABLE video_config ADD COLUMN IF NOT EXISTS last_command VARCHAR(50) DEFAULT ''");
             $db->exec("ALTER TABLE video_config ADD COLUMN IF NOT EXISTS command_seq BIGINT DEFAULT 0");
             $db->exec("ALTER TABLE video_config ADD COLUMN IF NOT EXISTS is_paused BOOLEAN DEFAULT FALSE");
@@ -496,9 +498,23 @@ function loadVideoConfig(?PDO $db): array {
         $config = $stmt->fetch();
 
         if ($config) {
+            $playlistId = $config['playlist_id'] ?? '';
+
+            // Auto-heal / resolve legacy or raw playlist IDs (e.g. PL..., UU..., etc.) to playable video IDs
+            if ($playlistId !== '' && preg_match('/^(PL|UU|FL|RD|OL|TL)[a-zA-Z0-9_-]{10,}$/i', $playlistId)) {
+                $resolvedIds = fetchPlaylistVideoIds($playlistId);
+                if (!empty($resolvedIds)) {
+                    $playlistId = implode(',', $resolvedIds);
+                    try {
+                        $upStmt = $db->prepare("UPDATE video_config SET playlist_id = :pId WHERE id = 1");
+                        $upStmt->execute([':pId' => $playlistId]);
+                    } catch (Exception $e) {}
+                }
+            }
+
             return [
                 'id' => (int)$config['id'],
-                'playlistId' => $config['playlist_id'],
+                'playlistId' => $playlistId,
                 'playlistTitle' => $config['playlist_title'],
                 'playlistUrl' => $config['playlist_url'],
                 'isEnabled' => (bool)$config['is_enabled'],
@@ -573,14 +589,104 @@ function saveVideoConfig(?PDO $db, array $config): void {
     }
 }
 
-function extractYoutubePlaylistId(string $url): ?string {
-    // Extract playlist ID from various YouTube URL formats
-    // Examples:
-    // https://www.youtube.com/playlist?list=PLxyz123
-    // https://youtube.com/playlist?list=PLxyz123
-    // youtube.com/playlist?list=PLxyz123
+function fetchPlaylistVideoIds(string $playlistId): array {
+    $cleanId = trim($playlistId);
+    if ($cleanId === '') {
+        return [];
+    }
 
-    if (preg_match('/[?&]list=([^&]+)/', $url, $matches)) {
+    $url = "https://www.youtube.com/playlist?list=" . urlencode($cleanId);
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+    curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    $html = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if (!$html || $httpCode !== 200) {
+        return [];
+    }
+
+    // Match all videoId occurrences in YouTube playlist page initialData
+    preg_match_all('/"videoId":"([a-zA-Z0-9_-]{11})"/', $html, $matches);
+    if (empty($matches[1])) {
+        return [];
+    }
+
+    $uniqueIds = [];
+    foreach ($matches[1] as $id) {
+        if (!in_array($id, $uniqueIds, true)) {
+            $uniqueIds[] = $id;
+        }
+    }
+
+    // Cap at 50 videos to keep embed URL length well within HTTP GET safety limits
+    if (count($uniqueIds) > 50) {
+        $uniqueIds = array_slice($uniqueIds, 0, 50);
+    }
+
+    return $uniqueIds;
+}
+
+function extractYoutubePlaylistId(string $url): ?string {
+    $input = trim($url);
+    if ($input === '') {
+        return null;
+    }
+
+    // 1. YouTube playlist query param: ?list=... or &list=...
+    if (preg_match('/[?&]list=([a-zA-Z0-9_-]+)/', $input, $matches)) {
+        $rawPlaylistId = $matches[1];
+        $videoIds = fetchPlaylistVideoIds($rawPlaylistId);
+        if (!empty($videoIds)) {
+            return implode(',', $videoIds);
+        }
+        return $rawPlaylistId;
+    }
+
+    // 2. Direct YouTube playlist ID (e.g. PL..., UU..., FL..., RD..., etc.)
+    if (preg_match('/^(PL|UU|FL|RD|OL|TL)[a-zA-Z0-9_-]{10,}$/i', $input)) {
+        $videoIds = fetchPlaylistVideoIds($input);
+        if (!empty($videoIds)) {
+            return implode(',', $videoIds);
+        }
+        return $input;
+    }
+
+    // 3. Multiple video URLs or video IDs (separated by comma, newline, pipe, or space)
+    $tokens = preg_split('/[\s,\|\n\r]+/', $input);
+    $extractedVideos = [];
+    foreach ($tokens as $token) {
+        $token = trim($token);
+        if ($token === '') continue;
+
+        if (preg_match('#youtu\.be/([a-zA-Z0-9_-]{11})#', $token, $m)) {
+            $extractedVideos[] = $m[1];
+        } elseif (preg_match('/[?&]v=([a-zA-Z0-9_-]{11})/', $token, $m)) {
+            $extractedVideos[] = $m[1];
+        } elseif (preg_match('#/embed/([a-zA-Z0-9_-]{11})#', $token, $m)) {
+            $extractedVideos[] = $m[1];
+        } elseif (preg_match('/^[a-zA-Z0-9_-]{11}$/', $token)) {
+            $extractedVideos[] = $token;
+        }
+    }
+
+    if (!empty($extractedVideos)) {
+        $unique = array_values(array_unique($extractedVideos));
+        return implode(',', $unique);
+    }
+
+    // 4. Single video URL formats
+    if (preg_match('/[?&]v=([a-zA-Z0-9_-]{11})/', $input, $matches)) {
+        return $matches[1];
+    }
+    if (preg_match('#youtu\.be/([a-zA-Z0-9_-]{11})#', $input, $matches)) {
+        return $matches[1];
+    }
+    if (preg_match('#/embed/([a-zA-Z0-9_-]{11})#', $input, $matches)) {
         return $matches[1];
     }
 
@@ -598,12 +704,17 @@ function loadPlaylistLibrary(?PDO $db): array {
         // Create table if it doesn't exist
         $db->exec("CREATE TABLE IF NOT EXISTS playlist_library (
             id SERIAL PRIMARY KEY,
-            playlist_id VARCHAR(100) NOT NULL,
+            playlist_id TEXT NOT NULL,
             playlist_title VARCHAR(255) NOT NULL DEFAULT 'Untitled',
-            playlist_url VARCHAR(500) NOT NULL,
+            playlist_url TEXT NOT NULL,
             added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             added_by VARCHAR(50) DEFAULT 'admin'
         )");
+
+        try {
+            $db->exec("ALTER TABLE playlist_library ALTER COLUMN playlist_id TYPE TEXT");
+            $db->exec("ALTER TABLE playlist_library ALTER COLUMN playlist_url TYPE TEXT");
+        } catch (Exception $e) {}
 
         $stmt = $db->prepare("SELECT id, playlist_id, playlist_title, playlist_url, added_at, added_by
                              FROM playlist_library

@@ -1927,7 +1927,8 @@ async function loadVideoConfigDisplay() {
         if (config.playlistId) {
           previewPlaceholder.style.display = 'none';
           previewFrame.hidden = false;
-          previewFrame.innerHTML = `<iframe src="https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(config.playlistId)}&autoplay=0&controls=1&rel=0&modestbranding=1" allowfullscreen allow="autoplay; encrypted-media"></iframe>`;
+          const embedUrl = buildYouTubeEmbedUrl(config.playlistId, { autoplay: 0, controls: 1 });
+          previewFrame.innerHTML = `<iframe id="admin-preview-iframe" src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
           previewBadge.textContent = config.isEnabled ? 'Live' : 'Preview Only';
           previewBadge.className = 'badge ' + (config.isEnabled ? 'serving' : 'waiting');
         } else {
@@ -1949,7 +1950,18 @@ async function loadVideoConfigDisplay() {
       const detailUrlText = document.getElementById('video-detail-url-text');
 
       if (detailTitle) detailTitle.textContent = config.playlistTitle || '—';
-      if (detailId) detailId.textContent = config.playlistId || '—';
+      if (detailId) {
+        if (!config.playlistId) {
+          detailId.textContent = '—';
+        } else if (config.playlistId.includes(',')) {
+          const parts = config.playlistId.split(',');
+          detailId.textContent = `${parts.length} videos queued (${parts[0]} +${parts.length - 1} more)`;
+          detailId.title = config.playlistId;
+        } else {
+          detailId.textContent = config.playlistId;
+          detailId.title = config.playlistId;
+        }
+      }
       if (detailStatus) {
         if (config.isEnabled && config.playlistId) {
           detailStatus.innerHTML = '<span class="badge serving">Active & Broadcasting</span>';
@@ -2057,25 +2069,38 @@ function initVideoManagement() {
   if (remotePrevBtn) {
     remotePrevBtn.onclick = () => {
       sendRemoteCommand('prev');
+      postToPlayerIframe('previousVideo');
+      postToPlayerIframe('prevVideo');
+      const original = remotePrevBtn.innerHTML;
+      remotePrevBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Prev';
+      setTimeout(() => { remotePrevBtn.innerHTML = original; }, 600);
     };
   }
 
   if (remoteToggleBtn) {
     remoteToggleBtn.onclick = () => {
       const isCurrentlyPaused = remoteToggleBtn.dataset.paused === 'true';
-      sendRemoteCommand(!isCurrentlyPaused ? 'pause' : 'resume');
+      const cmd = !isCurrentlyPaused ? 'pause' : 'resume';
+      sendRemoteCommand(cmd);
+      postToPlayerIframe(cmd === 'pause' ? 'pauseVideo' : 'playVideo');
     };
   }
 
   if (remoteNextBtn) {
     remoteNextBtn.onclick = () => {
       sendRemoteCommand('next');
+      postToPlayerIframe('nextVideo');
+      const original = remoteNextBtn.innerHTML;
+      remoteNextBtn.innerHTML = 'Next <i class="fa-solid fa-circle-notch fa-spin"></i>';
+      setTimeout(() => { remoteNextBtn.innerHTML = original; }, 600);
     };
   }
 
   if (remoteUnmuteBtn) {
     remoteUnmuteBtn.onclick = () => {
       sendRemoteCommand('unmute');
+      postToPlayerIframe('unMute');
+      postToPlayerIframe('setVolume', [100]);
       const original = remoteUnmuteBtn.innerHTML;
       remoteUnmuteBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i> Unmuted!';
       setTimeout(() => { remoteUnmuteBtn.innerHTML = original; }, 2000);
@@ -2275,17 +2300,26 @@ async function loadPlaylistLibrary() {
         }
       }
 
+      const isMulti = item.playlistId && item.playlistId.includes(',');
+      const parts = isMulti ? item.playlistId.split(',').map(s => s.trim()).filter(Boolean) : [item.playlistId];
+      const firstVidId = parts[0] && !isYoutubePlaylistId(parts[0]) ? parts[0] : '';
+      const thumbHtml = firstVidId
+        ? `<img src="https://img.youtube.com/vi/${encodeURIComponent(firstVidId)}/hqdefault.jpg" onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\\'fa-brands fa-youtube\\'></i>'" alt="thumbnail" />`
+        : `<i class="fa-solid fa-list-ul"></i>`;
+
+      const displayId = isMulti
+        ? `${parts.length} videos queued (${parts[0]} +${parts.length - 1})`
+        : (item.playlistId || '—');
+
       return `
         <div class="playlist-library-item ${isPlaying ? 'now-playing' : ''}">
           <div class="playlist-item-thumbnail">
-            <img src="https://img.youtube.com/vi/default/default.jpg"
-                 onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\\'fa-brands fa-youtube\\'></i>'"
-                 alt="thumbnail" />
+            ${thumbHtml}
           </div>
           <div class="playlist-item-info">
             <div class="playlist-item-title">${escapeHtml(item.playlistTitle)}</div>
             <div class="playlist-item-meta">
-              <span class="playlist-item-id">${escapeHtml(item.playlistId)}</span>
+              <span class="playlist-item-id" title="${escapeHtml(item.playlistId)}">${escapeHtml(displayId)}</span>
               ${addedDate ? `<span class="playlist-item-date">${addedDate}</span>` : ''}
               ${isPlaying ? '<span class="playlist-item-badge"><i class="fa-solid fa-circle"></i> Now Playing</span>' : ''}
               ${isSet ? '<span class="playlist-item-badge" style="color:#d97706;background:#fef3c7;border-color:#fde68a;animation:none;"><i class="fa-solid fa-pause"></i> Paused</span>' : ''}
@@ -3910,9 +3944,36 @@ let currentLoadedPlaylistId = null;
 let currentPlaylistEnabled = null;
 let pendingVideoPlay = false;
 
+function isYoutubePlaylistId(id) {
+  if (!id || typeof id !== 'string') return false;
+  const clean = id.trim();
+  return /^(PL|UU|LL|FL|RD|OL|TL)[a-zA-Z0-9_-]+$/i.test(clean) || (clean.length > 20 && !clean.includes(','));
+}
+
+function buildYouTubeEmbedUrl(mediaId, options = {}) {
+  const origin = window.location.origin || '';
+  const autoplay = options.autoplay ? 1 : 0;
+  const controls = options.controls !== undefined ? options.controls : 1;
+  const cleanId = (mediaId || '').trim();
+
+  if (!cleanId) return '';
+
+  if (cleanId.includes(',')) {
+    const ids = cleanId.split(',').map(s => s.trim()).filter(Boolean);
+    const firstId = ids[0] || '';
+    return `https://www.youtube.com/embed/${encodeURIComponent(firstId)}?playlist=${encodeURIComponent(ids.join(','))}&autoplay=${autoplay}&controls=${controls}&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(origin)}`;
+  } else if (isYoutubePlaylistId(cleanId)) {
+    return `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(cleanId)}&autoplay=${autoplay}&controls=${controls}&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(origin)}`;
+  } else {
+    return `https://www.youtube.com/embed/${encodeURIComponent(cleanId)}?playlist=${encodeURIComponent(cleanId)}&loop=1&autoplay=${autoplay}&controls=${controls}&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(origin)}`;
+  }
+}
+
 function postToPlayerIframe(func, args = []) {
   try {
-    const iframes = document.querySelectorAll('#youtube-player iframe, iframe#youtube-player, .youtube-player-container iframe');
+    const iframes = document.querySelectorAll(
+      '#youtube-player iframe, iframe#youtube-player, .youtube-player-container iframe, #video-preview-frame iframe, iframe#admin-preview-iframe'
+    );
     iframes.forEach((iframe) => {
       if (iframe && iframe.contentWindow) {
         iframe.contentWindow.postMessage(JSON.stringify({
@@ -3965,10 +4026,11 @@ function unmuteYouTubePlayer() {
 function forceAutoplay(player) {
   if (!player) return;
 
-  // Ensure iframe permissions allow autoplay and fullscreen across all browsers
+  // Ensure iframe permissions and referrer policy allow autoplay and cross-origin embed across all browsers
   try {
     const iframe = typeof player.getIframe === 'function' ? player.getIframe() : (typeof player.getIFrame === 'function' ? player.getIFrame() : document.querySelector('#youtube-player iframe, iframe#youtube-player'));
     if (iframe) {
+      iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
       iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
       iframe.setAttribute('allowfullscreen', '1');
     }
@@ -4015,6 +4077,67 @@ function forceAutoplay(player) {
       } catch (e) {}
     }
   }, 600);
+}
+
+function advancePlaylistNext() {
+  let handled = false;
+  if (youtubePlayer) {
+    try {
+      if (typeof youtubePlayer.nextVideo === 'function') {
+        youtubePlayer.nextVideo();
+        handled = true;
+      }
+    } catch (e) {
+      console.warn('advancePlaylistNext nextVideo error:', e);
+    }
+    if (!handled) {
+      try {
+        if (typeof youtubePlayer.getPlaylistIndex === 'function' && typeof youtubePlayer.playVideoAt === 'function') {
+          const curIdx = youtubePlayer.getPlaylistIndex();
+          const playlist = typeof youtubePlayer.getPlaylist === 'function' ? youtubePlayer.getPlaylist() : null;
+          if (playlist && playlist.length > 0) {
+            const nextIdx = (curIdx >= 0) ? ((curIdx + 1) % playlist.length) : 0;
+            youtubePlayer.playVideoAt(nextIdx);
+            handled = true;
+          }
+        }
+      } catch (e) {
+        console.warn('advancePlaylistNext playVideoAt error:', e);
+      }
+    }
+  }
+  postToPlayerIframe('nextVideo');
+}
+
+function advancePlaylistPrev() {
+  let handled = false;
+  if (youtubePlayer) {
+    try {
+      if (typeof youtubePlayer.previousVideo === 'function') {
+        youtubePlayer.previousVideo();
+        handled = true;
+      }
+    } catch (e) {
+      console.warn('advancePlaylistPrev previousVideo error:', e);
+    }
+    if (!handled) {
+      try {
+        if (typeof youtubePlayer.getPlaylistIndex === 'function' && typeof youtubePlayer.playVideoAt === 'function') {
+          const curIdx = youtubePlayer.getPlaylistIndex();
+          const playlist = typeof youtubePlayer.getPlaylist === 'function' ? youtubePlayer.getPlaylist() : null;
+          if (playlist && playlist.length > 0) {
+            const prevIdx = (curIdx > 0) ? (curIdx - 1) : (playlist.length - 1);
+            youtubePlayer.playVideoAt(prevIdx);
+            handled = true;
+          }
+        }
+      } catch (e) {
+        console.warn('advancePlaylistPrev playVideoAt error:', e);
+      }
+    }
+  }
+  postToPlayerIframe('previousVideo');
+  postToPlayerIframe('prevVideo');
 }
 
 function stopYouTubePlayer() {
@@ -4072,47 +4195,47 @@ function recreateYouTubePlayer(forcePlay = true) {
 
 function handleRemoteVideoCommand(command, videoConfig = null) {
   const isWaitingRoom = document.body.classList.contains('waiting-room');
-  if (!isWaitingRoom) return;
+  const isAdmin = document.body.classList.contains('admin-body');
 
-  console.log('Remote video command received on waiting room:', command, videoConfig);
+  console.log('Remote video command received:', command, videoConfig);
 
   if (command === 'play') {
     if (videoConfig && videoConfig.playlistId) {
       state.videoConfig = videoConfig;
-      recreateYouTubePlayer(true);
+      if (isWaitingRoom) recreateYouTubePlayer(true);
+      if (isAdmin) loadVideoConfigDisplay();
     } else {
-      fetchState().then(() => recreateYouTubePlayer(true));
+      fetchState().then(() => {
+        if (isWaitingRoom) recreateYouTubePlayer(true);
+        if (isAdmin) loadVideoConfigDisplay();
+      });
     }
   } else if (command === 'stop') {
     if (videoConfig) state.videoConfig = videoConfig;
-    stopYouTubePlayer();
+    if (isWaitingRoom) stopYouTubePlayer();
+    if (isAdmin) loadVideoConfigDisplay();
   } else if (command === 'pause') {
     if (youtubePlayer && typeof youtubePlayer.pauseVideo === 'function') {
       try { youtubePlayer.pauseVideo(); } catch (e) {}
     }
     postToPlayerIframe('pauseVideo');
+    if (isAdmin) updateRemotePauseUI(true);
   } else if (command === 'resume') {
     if (youtubePlayer && typeof youtubePlayer.playVideo === 'function') {
       try { youtubePlayer.playVideo(); } catch (e) {}
     }
     postToPlayerIframe('playVideo');
+    if (isAdmin) updateRemotePauseUI(false);
   } else if (command === 'next') {
-    // Advance to next video in playlist without disrupting playlist buffer
-    if (youtubePlayer && typeof youtubePlayer.nextVideo === 'function') {
-      try { youtubePlayer.nextVideo(); } catch (e) {}
-    }
-    postToPlayerIframe('nextVideo');
+    advancePlaylistNext();
   } else if (command === 'prev') {
-    // Return to previous video in playlist without disrupting playlist buffer
-    if (youtubePlayer && typeof youtubePlayer.previousVideo === 'function') {
-      try { youtubePlayer.previousVideo(); } catch (e) {}
-    }
-    postToPlayerIframe('prevVideo');
-    postToPlayerIframe('previousVideo');
+    advancePlaylistPrev();
   } else if (command === 'unmute') {
     unmuteYouTubePlayer();
   }
 }
+
+let consecutiveVideoErrors = 0;
 
 function initYouTubePlayer(forcePlay = false) {
   const videoConfig = state.videoConfig;
@@ -4172,38 +4295,63 @@ function initYouTubePlayer(forcePlay = false) {
   }
   playerDiv.style.display = '';
 
+  const cleanId = (videoConfig.playlistId || '').trim();
+  const isPlaylist = isYoutubePlaylistId(cleanId);
+  const isMulti = cleanId.includes(',');
+  const isPaused = Boolean(videoConfig.isPaused);
+
+  let playerConfig = {
+    height: '100%',
+    width: '100%',
+    playerVars: {
+      'autoplay': isPaused ? 0 : 1,
+      'controls': 1,
+      'rel': 0,
+      'loop': 1,
+      'modestbranding': 1,
+      'playsinline': 1,
+      'enablejsapi': 1,
+      'origin': window.location.origin
+    },
+    events: {
+      'onReady': (event) => {
+        if (placeholder) placeholder.hidden = true;
+        try {
+          const iframe = typeof event.target.getIframe === 'function' ? event.target.getIframe() : (typeof event.target.getIFrame === 'function' ? event.target.getIFrame() : document.querySelector('#youtube-player iframe, iframe#youtube-player'));
+          if (iframe) {
+            iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+            iframe.setAttribute('allow', 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share');
+            iframe.setAttribute('allowfullscreen', '1');
+          }
+        } catch (e) {}
+
+        if (state.videoConfig && state.videoConfig.isPaused) {
+          try { event.target.pauseVideo(); } catch (e) {}
+          postToPlayerIframe('pauseVideo');
+        } else {
+          forceAutoplay(event.target);
+        }
+      },
+      'onStateChange': onPlayerStateChange,
+      'onError': onPlayerError
+    }
+  };
+
+  if (isPlaylist) {
+    playerConfig.playerVars.list = cleanId;
+    playerConfig.playerVars.listType = 'playlist';
+  } else if (isMulti) {
+    const ids = cleanId.split(',').map(s => s.trim()).filter(Boolean);
+    playerConfig.videoId = ids[0];
+    playerConfig.playerVars.playlist = ids.join(',');
+  } else {
+    playerConfig.videoId = cleanId;
+    playerConfig.playerVars.playlist = cleanId;
+  }
+
   // Create new player with autoplay, loop, and API enabled
   try {
-    youtubePlayer = new YT.Player('youtube-player', {
-      height: '100%',
-      width: '100%',
-      playerVars: {
-        'list': videoConfig.playlistId,
-        'listType': 'playlist',
-        'autoplay': videoConfig.isPaused ? 0 : 1,
-        'controls': 1,
-        'rel': 0,
-        'loop': 1,
-        'modestbranding': 1,
-        'playsinline': 1,
-        'enablejsapi': 1,
-        'origin': window.location.origin
-      },
-      events: {
-        'onReady': (event) => {
-          if (placeholder) placeholder.hidden = true;
-          if (state.videoConfig && state.videoConfig.isPaused) {
-            try { event.target.pauseVideo(); } catch (e) {}
-            postToPlayerIframe('pauseVideo');
-          } else {
-            forceAutoplay(event.target);
-          }
-        },
-        'onStateChange': onPlayerStateChange,
-        'onError': onPlayerError
-      }
-    });
-
+    youtubePlayer = new YT.Player('youtube-player', playerConfig);
     currentLoadedPlaylistId = videoConfig.playlistId;
     currentPlaylistEnabled = true;
   } catch (err) {
@@ -4212,32 +4360,39 @@ function initYouTubePlayer(forcePlay = false) {
 }
 
 function onPlayerStateChange(event) {
+  // YT.PlayerState.PLAYING = 1
+  if (event.data === 1) {
+    consecutiveVideoErrors = 0;
+  }
   // YT.PlayerState.ENDED = 0
   if (event.data === 0) {
     console.log('Video finished. Auto-advancing to next video in playlist...');
-    if (youtubePlayer && typeof youtubePlayer.nextVideo === 'function') {
-      try {
-        youtubePlayer.nextVideo();
-      } catch (e) {}
-    }
+    advancePlaylistNext();
   }
 }
 
 function onPlayerError(event) {
   console.warn('YouTube player error code:', event.data);
-  // Auto-recovery: if YouTube hits an error (codes 2, 5, 100, 101, 150):
-  // 1. Try skipping to next video in playlist
-  if (youtubePlayer && typeof youtubePlayer.nextVideo === 'function') {
-    try {
-      youtubePlayer.nextVideo();
-      return;
-    } catch (e) {}
+  consecutiveVideoErrors++;
+
+  // Auto-recovery: if a video in a playlist encounters an error (e.g. 100, 101, 150, 153),
+  // automatically advance to the next video in the playlist
+  if (consecutiveVideoErrors < 10) {
+    console.log('Skipping unplayable video to next video in playlist...');
+    advancePlaylistNext();
+    return;
   }
 
-  // 2. If skipping failed or player crashed, cleanly recreate player from video 0
-  setTimeout(() => {
-    recreateYouTubePlayer(true);
-  }, 1200);
+  // If every video in the playlist failed:
+  console.warn('All videos in playlist failed or playlist is private.');
+  const placeholder = document.getElementById('youtube-placeholder');
+  const placeholderText = document.querySelector('.placeholder-text');
+  if (placeholder) {
+    placeholder.hidden = false;
+    if (placeholderText) {
+      placeholderText.textContent = 'Playlist or video unavailable. Please verify YouTube privacy is set to Public/Unlisted.';
+    }
+  }
 }
 
 // Update YouTube player when video config changes
