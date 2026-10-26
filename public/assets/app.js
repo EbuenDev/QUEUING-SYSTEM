@@ -1382,53 +1382,66 @@ function renderAdminQueue() {
     adminPatientCount.textContent = `${state.patients.length} patients in queue`;
   }
 
-  // Render current patient (doctor-style display)
+  // Render current patient (exact mockup design box)
   if (adminCurrentPatient && isAdminPage) {
     const currentServing = state.patients.find((patient) => patient.status === 'serving');
     if (currentServing) {
       const patientType = currentServing.patientStatus || currentServing.type || 'regular';
       const philHealthStatus = currentServing.philHealthStatus || 'no-philhealth';
       adminCurrentPatient.innerHTML = `
-        <strong>#${currentServing.queueNumber} — ${escapeHtml(currentServing.name)}</strong>
-        <div class="badge-group">
-          <span class="badge ${currentServing.status}">${currentServing.status}</span>
-          <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
-          <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
+        <div class="current-patient-mockup-box">
+          <div class="current-patient-mockup-qnum">#${currentServing.queueNumber}</div>
+          <div class="current-patient-mockup-divider"></div>
+          <div class="current-patient-mockup-info">
+            <h4 class="current-patient-mockup-name">${escapeHtml(currentServing.name)}</h4>
+            <div class="current-patient-mockup-badges">
+              <span class="mockup-badge badge-serving">SERVING</span>
+              <span class="mockup-badge badge-priority type-${patientType}">${patientTypeLabel(patientType)}</span>
+              <span class="mockup-badge badge-philhealth">${philHealthStatus.replace(/-/g, ' ')}</span>
+            </div>
+          </div>
         </div>
-        <small>PH ID: ${escapeHtml(currentServing.philHealthId || 'N/A')}</small>
       `;
     } else {
       adminCurrentPatient.innerHTML = `
-        <strong>No patient is being served yet.</strong>
-        <div class="badge-group">
-          <span class="badge waiting">Waiting</span>
+        <div class="current-patient-mockup-box empty">
+          <div class="current-patient-mockup-qnum">---</div>
+          <div class="current-patient-mockup-divider"></div>
+          <div class="current-patient-mockup-info">
+            <h4 class="current-patient-mockup-name">No patient is being served</h4>
+            <div class="current-patient-mockup-badges">
+              <span class="mockup-badge badge-waiting">Awaiting next patient</span>
+            </div>
+          </div>
         </div>
-        <small>Queue # — Full Name</small>
-        <small>PH ID: N/A</small>
       `;
     }
   }
 
-  // Render next patient
+  // Render next patient (exact mockup design box)
   if (adminNextPatient && isAdminPage) {
     const waitingPatients = state.patients.filter((patient) => patient.status === 'waiting');
     if (waitingPatients.length > 0) {
       const nextPatient = waitingPatients[0];
-      const patientType = nextPatient.patientStatus || nextPatient.type || 'regular';
-      const philHealthStatus = nextPatient.philHealthStatus || 'no-philhealth';
       adminNextPatient.innerHTML = `
-        <strong>#${nextPatient.queueNumber} — ${escapeHtml(nextPatient.name)}</strong>
-        <div class="badge-group">
-          <span class="badge ${nextPatient.status}">${nextPatient.status}</span>
-          <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
-          <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
+        <div class="next-patient-mockup-box">
+          <div class="next-patient-mockup-qnum">#${nextPatient.queueNumber}</div>
+          <div class="next-patient-mockup-divider"></div>
+          <div class="next-patient-mockup-info">
+            <span class="next-patient-mockup-text">${escapeHtml(nextPatient.name)}</span>
+            <small class="next-patient-mockup-sub">Waiting for consultation...</small>
+          </div>
         </div>
-        <small>PH ID: ${escapeHtml(nextPatient.philHealthId || 'N/A')}</small>
       `;
     } else {
       adminNextPatient.innerHTML = `
-        <strong>No queue yet.</strong>
-        <small>Awaiting the next patient.</small>
+        <div class="next-patient-mockup-box empty">
+          <div class="next-patient-mockup-qnum">---</div>
+          <div class="next-patient-mockup-divider"></div>
+          <div class="next-patient-mockup-info">
+            <span class="next-patient-mockup-text">Waiting for consultation...</span>
+          </div>
+        </div>
       `;
     }
   }
@@ -1469,41 +1482,48 @@ function renderAdminQueue() {
     }
   }
 
+  const searchFilter = document.getElementById('queue-search-filter')?.value?.trim().toLowerCase() || '';
+  const patientsToRender = searchFilter
+    ? state.patients.filter((p) => {
+        const nameMatch = (p.name || '').toLowerCase().includes(searchFilter);
+        const numMatch = String(p.queueNumber || '').includes(searchFilter);
+        const phMatch = (p.philHealthId || '').toLowerCase().includes(searchFilter);
+        const statusMatch = (p.patientStatus || p.type || '').toLowerCase().includes(searchFilter);
+        return nameMatch || numMatch || phMatch || statusMatch;
+      })
+    : state.patients;
+
   if (state.patients.length === 0) {
-    patientList.innerHTML = '<li class="empty-state">No patients have been added yet.</li>';
+    patientList.innerHTML = '<tr><td colspan="5" class="mockup-table-empty">No patients have been added to the queue yet.</td></tr>';
     return;
   }
 
-  patientList.innerHTML = state.patients
+  if (patientsToRender.length === 0) {
+    patientList.innerHTML = '<tr><td colspan="5" class="mockup-table-empty">No matching patients found in queue.</td></tr>';
+    return;
+  }
+
+  patientList.innerHTML = patientsToRender
     .map(
       (patient) => {
         const patientType = patient.patientStatus || patient.type || 'regular';
-        const philHealthStatus = patient.philHealthStatus || 'no-philhealth';
-        const actionButtons = [];
-
-        if (isAdminPage) {
-          actionButtons.push(`<button class="btn btn-secondary" data-action="edit" data-id="${patient.id}">Edit</button>`);
-          const isCurrentPatient = patient.status === 'serving';
-          actionButtons.push(`<button class="btn btn-primary" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>`);
-          actionButtons.push(`<button class="btn btn-warning" data-action="skip" data-id="${patient.id}">Skip</button>`);
-          actionButtons.push(`<button class="btn btn-danger" data-action="delete" data-id="${patient.id}">Delete</button>`);
-        }
+        const isCurrentPatient = patient.status === 'serving';
 
         return `
-          <li class="queue-item">
-            <div>
-              <strong>#${patient.queueNumber} — ${escapeHtml(patient.name)}</strong>
-              <div class="badge-group">
-                <span class="badge ${patient.status}">${patient.status}</span>
-                <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
-                <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
+          <tr class="mockup-table-row" data-id="${patient.id}">
+            <td class="col-qnum">#${patient.queueNumber}</td>
+            <td class="col-name">${escapeHtml(patient.name)}</td>
+            <td class="col-priority"><span class="mockup-badge badge-priority type-${patientType}">${patientTypeLabel(patientType)}</span></td>
+            <td class="col-status"><span class="mockup-badge badge-status-${patient.status}"><i class="fa-regular fa-clock"></i> ${patient.status === 'waiting' ? 'Waiting' : patient.status}</span></td>
+            <td class="col-action">
+              <div class="mockup-table-actions">
+                <button class="mockup-tbl-btn btn-tbl-edit" data-action="edit" data-id="${patient.id}" title="Edit Patient Details"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button class="mockup-tbl-btn btn-tbl-serve" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}" title="${isCurrentPatient ? 'Done' : 'Serve'}">${isCurrentPatient ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-play"></i>'}</button>
+                <button class="mockup-tbl-btn btn-tbl-skip" data-action="skip" data-id="${patient.id}" title="Skip"><i class="fa-solid fa-angles-right"></i></button>
+                <button class="mockup-tbl-btn btn-tbl-delete" data-action="delete" data-id="${patient.id}" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
               </div>
-              <small>PH ID: ${escapeHtml(patient.philHealthId || 'N/A')}</small>
-            </div>
-            <div class="actions">
-              ${actionButtons.join('')}
-            </div>
-          </li>
+            </td>
+          </tr>
         `;
       },
     )
@@ -2548,6 +2568,28 @@ function initAdminPage() {
     });
   }
 
+  const closeEditModalBtn = document.getElementById('close-edit-modal-btn');
+  if (closeEditModalBtn && editModal) {
+    closeEditModalBtn.addEventListener('click', () => {
+      editModal.hidden = true;
+    });
+  }
+
+  if (editModal) {
+    editModal.addEventListener('click', (e) => {
+      if (e.target === editModal) {
+        editModal.hidden = true;
+      }
+    });
+  }
+
+  const queueSearchFilter = document.getElementById('queue-search-filter');
+  if (queueSearchFilter) {
+    queueSearchFilter.addEventListener('input', () => {
+      renderAdminQueue();
+    });
+  }
+
   initHistoryEditForm();
 
   // History sort dropdown
@@ -2681,6 +2723,10 @@ function initAdminPage() {
         editPatientStatusSelect.value = patient.patientStatus || patient.type || 'regular';
         editPhilHealthStatusSelect.value = patient.philHealthStatus || 'no-philhealth';
         editModal.hidden = false;
+        setTimeout(() => {
+          editPatientNameInput.focus();
+          editPatientNameInput.select();
+        }, 50);
       }
     } else if (action === 'edit-history') {
       openHistoryEditModal(id);
@@ -2931,6 +2977,15 @@ function initAdminAuth() {
   // Clear errors when user types
   [usernameInput, passwordInput].forEach(input => {
     input?.addEventListener('input', () => showAdminLoginError(''));
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      const editModal = document.getElementById('edit-patient-modal');
+      if (editModal && !editModal.hidden) {
+        editModal.hidden = true;
+      }
+    }
   });
 
   if (loginForm) {
