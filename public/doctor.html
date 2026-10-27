@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RHU II Doctor Panel</title>
-    <link rel="stylesheet" href="assets/styles.css?v=6.1" />
+    <link rel="stylesheet" href="assets/styles.css?v=7.3" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
@@ -298,56 +298,70 @@
               <p class="page-subtitle">Serve patients, record ICD codes, and update consultation notes</p>
             </div>
 
-            <!-- Current Patient Card -->
-            <div class="card card-serving">
-              <div class="card-header">
-                <h3>Current Patient</h3>
-                <span id="doctor-patient-count" class="pill">0 patients in queue</span>
-              </div>
-              <div id="doctor-current-patient" class="queue-item doctor-current-patient-card">
-                <div id="doctor-status-indicator" class="doctor-status-indicator"></div>
-                <strong>No patient is being served yet.</strong>
-                <div class="badge-group">
-                  <span class="badge waiting">Waiting</span>
+            <!-- Top Grid: Current Patient (Left) & Next Patient in Line (Right) -->
+            <div class="doctor-queue-grid">
+              <!-- Current Patient Card -->
+              <div class="card card-serving doctor-current-card">
+                <div class="card-header">
+                  <div class="card-header-left">
+                    <span class="doctor-card-icon"><i class="fa-solid fa-user-doctor"></i></span>
+                    <h3>Current Patient</h3>
+                  </div>
+                  <span id="doctor-patient-count" class="pill">0 patients in queue</span>
                 </div>
-                <small>Queue # — Full Name</small>
-                <small>PH ID: N/A</small>
+                <div id="doctor-current-patient" class="doctor-current-patient-container">
+                  <div class="doctor-empty-serving-box">
+                    <div class="doctor-empty-icon"><i class="fa-solid fa-stethoscope"></i></div>
+                    <div class="doctor-empty-info">
+                      <h4>No patient is being served yet</h4>
+                      <p>Click "Next Patient" below to attend to the next waiting patient.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="action-row doctor-action-row">
+                  <button id="doctor-serve-next-btn" class="btn btn-primary" type="button"><i class="fa-solid fa-user-check"></i> Next Patient</button>
+                  <button id="doctor-finish-btn" class="btn btn-success" type="button"><i class="fa-solid fa-circle-check"></i> Finish</button>
+                  <button id="doctor-prescribe-btn" class="btn btn-primary btn-prescribe-yakap" type="button" title="Write Yakap Prescription"><i class="fa-solid fa-file-prescription"></i> Prescribe Yakap</button>
+                  <button id="doctor-recall-btn" class="btn btn-secondary" type="button"><i class="fa-solid fa-bullhorn"></i> Recall</button>
+                  <button id="doctor-skip-btn" class="btn btn-warning" type="button"><i class="fa-solid fa-forward"></i> Skip</button>
+                  <button id="doctor-followup-btn" class="btn btn-info" type="button"><i class="fa-solid fa-arrows-rotate"></i> Send to Follow-up</button>
+                </div>
               </div>
-              <div class="action-row">
-                <button id="doctor-serve-next-btn" class="btn btn-primary" type="button"><i class="fa-solid fa-user-check"></i> Next Patient</button>
-                <button id="doctor-finish-btn" class="btn btn-success" type="button"><i class="fa-solid fa-circle-check"></i> Finish</button>
-                <button id="doctor-recall-btn" class="btn btn-secondary" type="button"><i class="fa-solid fa-bullhorn"></i> Recall</button>
-                <button id="doctor-skip-btn" class="btn btn-warning" type="button"><i class="fa-solid fa-forward"></i> Skip</button>
-                <button id="doctor-followup-btn" class="btn btn-info" type="button"><i class="fa-solid fa-arrows-rotate"></i> Send to Follow-up</button>
-                <button id="doctor-prescribe-btn" class="btn btn-primary" type="button" style="background: linear-gradient(135deg, #0284c7, #0369a1);" title="Write Yakap Prescription"><i class="fa-solid fa-file-prescription"></i> Prescribe Yakap</button>
-              </div>
-            </div>
 
-            <!-- Next Patient in Line -->
-            <div class="card">
-              <div class="card-header">
-                <h3>Next Patient in Line</h3>
-              </div>
-              <div id="doctor-next-patient" class="next-patient-display">
-                <strong>No queue yet.</strong>
-                <small>Awaiting the next patient.</small>
+              <!-- Next Patient in Line -->
+              <div class="card doctor-next-card">
+                <div class="card-header">
+                  <div class="card-header-left">
+                    <span class="doctor-card-icon blue"><i class="fa-regular fa-clock"></i></span>
+                    <h3>Next Patient in Line</h3>
+                  </div>
+                </div>
+                <div id="doctor-next-patient" class="next-patient-display doctor-next-display">
+                  <strong>No queue yet.</strong>
+                  <small>Awaiting the next patient.</small>
+                </div>
               </div>
             </div>
 
             <!-- Patient List Table -->
-            <div class="card">
+            <div class="card doctor-list-card">
               <div class="card-header">
-                <h3>Patient List</h3>
+                <div class="card-header-left">
+                  <span class="doctor-card-icon teal"><i class="fa-solid fa-list-check"></i></span>
+                  <h3>Patient Waiting List</h3>
+                </div>
               </div>
               <div class="queue-table-wrap">
-                <table class="queue-table">
+                <table class="queue-table doctor-queue-table">
                   <thead>
                     <tr>
                       <th>Queue #</th>
                       <th>Patient Name</th>
-                      <th>Status</th>
-                      <th>Patient Type</th>
+                      <th>Priority</th>
+                      <th>PhilHealth Status</th>
+                      <th>Yakap Eligibility</th>
                       <th>PhilHealth ID</th>
+                      <th>Status</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -449,65 +463,123 @@
                 <span id="yakap-drop-error-text">Only PDF files are allowed! Please drop a valid .pdf file.</span>
               </div>
 
-              <!-- Selected File & Conversion Progress Container -->
+              <!-- Selected File & Simplified Form Container -->
               <div id="yakap-file-processing" class="yakap-file-processing" hidden>
-                <div class="processing-file-bar">
-                  <div class="file-icon-box">
-                    <i class="fa-solid fa-file-pdf"></i>
+                
+                <!-- Compact File & Conversion Status Strip -->
+                <div class="yakap-file-status-strip">
+                  <div class="yakap-strip-left">
+                    <div class="yakap-strip-icon">
+                      <i class="fa-solid fa-file-pdf"></i>
+                    </div>
+                    <div class="yakap-strip-info">
+                      <div class="yakap-strip-filename" id="yakap-file-name">prescription.pdf</div>
+                      <div class="yakap-strip-meta">
+                        <span id="yakap-file-details">0 KB • PDF Document</span>
+                        <span class="yakap-strip-divider">•</span>
+                        <span id="yakap-conversion-status" class="yakap-status-badge converting">
+                          <i class="fa-solid fa-spinner fa-spin"></i> <span id="yakap-conversion-text">Converting PDF to PNG...</span>
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div class="file-meta-info">
-                    <h4 id="yakap-file-name">prescription.pdf</h4>
-                    <span id="yakap-file-details">0 KB • Calculating...</span>
-                  </div>
-                  <div class="file-actions">
-                    <button type="button" id="btn-remove-selected-pdf" class="chat-tool-btn danger" title="Remove PDF">
-                      <i class="fa-solid fa-trash-can"></i>
+                  <div class="yakap-strip-actions">
+                    <button type="button" id="btn-remove-selected-pdf" class="btn-change-file" title="Change PDF File">
+                      <i class="fa-solid fa-arrow-rotate-left"></i> Change PDF
                     </button>
                   </div>
                 </div>
 
-                <!-- Conversion status banner -->
-                <div id="yakap-conversion-status" class="yakap-conversion-status converting">
-                  <i class="fa-solid fa-spinner fa-spin"></i>
-                  <span id="yakap-conversion-text">Converting PDF pages to high-resolution PNG for printing...</span>
+                <!-- Simple, Non-Complicated Form & Instant Preview Flow -->
+                <div class="yakap-simple-form-layout">
+                  
+                  <!-- Left: Clean Details Card (Patient Name, Queue #, Dispensing Notes, Send Action) -->
+                  <div class="yakap-card-form">
+                    <div class="yakap-form-header">
+                      <h4><i class="fa-solid fa-clipboard-user"></i> Patient & Dispensing Information</h4>
+                      <span id="yakap-linked-badge" class="yakap-linked-pill" hidden>
+                        <i class="fa-solid fa-link"></i> Linked to active patient
+                      </span>
+                    </div>
+
+                    <div class="yakap-form-row">
+                      <div class="form-group flex-3">
+                        <label for="doctor-prescription-patient">
+                          <span>Patient Name</span> <span class="req">*</span>
+                        </label>
+                        <div class="input-with-icon">
+                          <i class="fa-solid fa-user input-icon"></i>
+                          <input type="text" id="doctor-prescription-patient" placeholder="e.g. Juan Dela Cruz" required autocomplete="off" />
+                        </div>
+                      </div>
+
+                      <div class="form-group flex-1">
+                        <label for="doctor-prescription-queue">
+                          <span>Queue #</span> <span class="opt-label">(Optional)</span>
+                        </label>
+                        <div class="input-with-icon">
+                          <i class="fa-solid fa-hashtag input-icon"></i>
+                          <input type="number" id="doctor-prescription-queue" placeholder="e.g. 5" min="1" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- PhilHealth & Yakap Eligibility Status Banner -->
+                    <div id="yakap-patient-philhealth-box" class="yakap-ph-status-banner" hidden>
+                      <div class="yakap-ph-status-left">
+                        <i class="fa-solid fa-shield-heart"></i>
+                        <div>
+                          <span class="yakap-ph-label">PhilHealth Status:</span>
+                          <span id="yakap-ph-status-val" class="yakap-ph-val">Registered</span>
+                        </div>
+                      </div>
+                      <div id="yakap-ph-eligibility-badge" class="yakap-ph-eligibility-pill ready">
+                        <i class="fa-solid fa-circle-check"></i> <span id="yakap-ph-eligibility-text">Yakap Prescription Ready (Can Avail)</span>
+                      </div>
+                    </div>
+
+                    <div class="form-group">
+                      <label for="doctor-prescription-notes">
+                        <span>Pharmacy Dispensing Notes</span> <span class="opt-label">(Optional)</span>
+                      </label>
+                      <div class="input-with-icon">
+                        <i class="fa-solid fa-pills input-icon"></i>
+                        <input type="text" id="doctor-prescription-notes" placeholder="e.g. 1 tab 3x daily after meals for 7 days" />
+                      </div>
+                    </div>
+
+                    <!-- Direct Send & Cancel Actions right inside the form -->
+                    <div class="yakap-form-actions">
+                      <button type="button" id="btn-send-prescription-admin" class="btn-send-rx">
+                        <i class="fa-solid fa-paper-plane"></i> Send to Admin / Pharmacy
+                      </button>
+                      <button type="button" id="btn-cancel-pdf-upload" class="btn-cancel-rx">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Right: Half-A4 Landscape Live Preview Card -->
+                  <div class="yakap-card-preview">
+                    <div class="yakap-preview-card-header">
+                      <div class="preview-title">
+                        <i class="fa-solid fa-file-image"></i>
+                        <span>Prescription Preview (Half-A4 Landscape)</span>
+                      </div>
+                      <span id="yakap-page-counter" class="preview-pill">Page 1 of 1</span>
+                    </div>
+
+                    <div id="yakap-png-preview-container" class="yakap-png-compact-preview">
+                      <!-- Rendered PNG image injected here -->
+                    </div>
+
+                    <div class="preview-click-hint">
+                      <i class="fa-solid fa-magnifying-glass-plus"></i> Click preview to view full resolution
+                    </div>
+                  </div>
+
                 </div>
 
-                <!-- Patient Association & Notes Form -->
-                <div class="yakap-meta-form-grid">
-                  <div class="form-group">
-                    <label for="doctor-prescription-patient">Patient Name <span class="req">*</span></label>
-                    <input type="text" id="doctor-prescription-patient" placeholder="e.g. Juan Dela Cruz" required autocomplete="off" />
-                  </div>
-                  <div class="form-group">
-                    <label for="doctor-prescription-queue">Queue # (Optional)</label>
-                    <input type="number" id="doctor-prescription-queue" placeholder="e.g. 5" min="1" />
-                  </div>
-                  <div class="form-group flex-2">
-                    <label for="doctor-prescription-notes">Pharmacy / Dispensing Notes (Optional)</label>
-                    <input type="text" id="doctor-prescription-notes" placeholder="e.g. 1 week antibiotic therapy, please counsel patient" />
-                  </div>
-                </div>
-
-                <!-- Converted PNG Preview Container -->
-                <div class="yakap-preview-wrapper">
-                  <div class="preview-header">
-                    <h4><i class="fa-solid fa-image"></i> Converted PNG Preview (Ready for Half-A4 Landscape Print)</h4>
-                    <span id="yakap-page-counter" class="pill">Page 1 of 1</span>
-                  </div>
-                  <div id="yakap-png-preview-container" class="yakap-png-preview-container">
-                    <!-- Rendered PNG image injected here -->
-                  </div>
-                </div>
-
-                <!-- Upload / Send to Admin Toolbar -->
-                <div class="yakap-upload-actions">
-                  <button type="button" id="btn-send-prescription-admin" class="btn btn-success btn-lg">
-                    <i class="fa-solid fa-paper-plane"></i> Send Converted PNG to Admin
-                  </button>
-                  <button type="button" id="btn-cancel-pdf-upload" class="btn btn-secondary">
-                    Cancel
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -609,6 +681,7 @@
       </div>
     </div>
 
+<<<<<<< HEAD
     <!-- Dedicated A4 Landscape Print Modal (Prescription on Left Half) -->
     <div id="yakap-half-a4-print-modal" class="modern-modal-overlay" hidden aria-hidden="true">
       <div class="yakap-print-dialog" role="dialog" aria-modal="true" aria-labelledby="print-modal-title">
@@ -658,6 +731,17 @@
               </div>
             </div>
           </div>
+=======
+    <!-- Simple 2-Second Pop-up Notification (Replaces intrusive alert dialogs) -->
+    <div id="yakap-simple-popup" class="yakap-simple-popup" hidden aria-live="polite">
+      <div class="yakap-popup-card">
+        <div class="yakap-popup-icon-wrap" id="yakap-popup-icon">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <div class="yakap-popup-body">
+          <h4 id="yakap-popup-title">Successfully Uploaded!</h4>
+          <p id="yakap-popup-message">Prescription sent to Admin & Pharmacy</p>
+>>>>>>> d288f73fdd342afec2e02d6eb0be5031c1d97278
         </div>
       </div>
     </div>
@@ -684,6 +768,10 @@
       </div>
     </div>
 
+<<<<<<< HEAD
     <script src="assets/app.js?v=5.7"></script>
+=======
+    <script src="assets/app.js?v=6.2"></script>
+>>>>>>> d288f73fdd342afec2e02d6eb0be5031c1d97278
   </body>
 </html>

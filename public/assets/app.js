@@ -1300,6 +1300,16 @@ function patientTypeLabel(type) {
   return labels[type] || 'Regular';
 }
 
+function philHealthStatusLabel(status) {
+  const labels = {
+    'registered': 'Registered',
+    'not-registered': 'Not Registered',
+    'no-philhealth': 'No PhilHealth',
+    'other-facility': 'Other Facility',
+  };
+  return labels[status] || 'No PhilHealth';
+}
+
 function printConsultationHistory() {
   const historyEntries = state.consultationHistory?.slice().reverse() || [];
   const printWindow = window.open('', '_blank', 'width=900,height=700');
@@ -1382,53 +1392,66 @@ function renderAdminQueue() {
     adminPatientCount.textContent = `${state.patients.length} patients in queue`;
   }
 
-  // Render current patient (doctor-style display)
+  // Render current patient (exact mockup design box)
   if (adminCurrentPatient && isAdminPage) {
     const currentServing = state.patients.find((patient) => patient.status === 'serving');
     if (currentServing) {
       const patientType = currentServing.patientStatus || currentServing.type || 'regular';
       const philHealthStatus = currentServing.philHealthStatus || 'no-philhealth';
       adminCurrentPatient.innerHTML = `
-        <strong>#${currentServing.queueNumber} — ${escapeHtml(currentServing.name)}</strong>
-        <div class="badge-group">
-          <span class="badge ${currentServing.status}">${currentServing.status}</span>
-          <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
-          <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
+        <div class="current-patient-mockup-box">
+          <div class="current-patient-mockup-qnum">#${currentServing.queueNumber}</div>
+          <div class="current-patient-mockup-divider"></div>
+          <div class="current-patient-mockup-info">
+            <h4 class="current-patient-mockup-name">${escapeHtml(currentServing.name)}</h4>
+            <div class="current-patient-mockup-badges">
+              <span class="mockup-badge badge-serving">SERVING</span>
+              <span class="mockup-badge badge-priority type-${patientType}">${patientTypeLabel(patientType)}</span>
+              <span class="mockup-badge badge-philhealth">${philHealthStatus.replace(/-/g, ' ')}</span>
+            </div>
+          </div>
         </div>
-        <small>PH ID: ${escapeHtml(currentServing.philHealthId || 'N/A')}</small>
       `;
     } else {
       adminCurrentPatient.innerHTML = `
-        <strong>No patient is being served yet.</strong>
-        <div class="badge-group">
-          <span class="badge waiting">Waiting</span>
+        <div class="current-patient-mockup-box empty">
+          <div class="current-patient-mockup-qnum">---</div>
+          <div class="current-patient-mockup-divider"></div>
+          <div class="current-patient-mockup-info">
+            <h4 class="current-patient-mockup-name">No patient is being served</h4>
+            <div class="current-patient-mockup-badges">
+              <span class="mockup-badge badge-waiting">Awaiting next patient</span>
+            </div>
+          </div>
         </div>
-        <small>Queue # — Full Name</small>
-        <small>PH ID: N/A</small>
       `;
     }
   }
 
-  // Render next patient
+  // Render next patient (exact mockup design box)
   if (adminNextPatient && isAdminPage) {
     const waitingPatients = state.patients.filter((patient) => patient.status === 'waiting');
     if (waitingPatients.length > 0) {
       const nextPatient = waitingPatients[0];
-      const patientType = nextPatient.patientStatus || nextPatient.type || 'regular';
-      const philHealthStatus = nextPatient.philHealthStatus || 'no-philhealth';
       adminNextPatient.innerHTML = `
-        <strong>#${nextPatient.queueNumber} — ${escapeHtml(nextPatient.name)}</strong>
-        <div class="badge-group">
-          <span class="badge ${nextPatient.status}">${nextPatient.status}</span>
-          <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
-          <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
+        <div class="next-patient-mockup-box">
+          <div class="next-patient-mockup-qnum">#${nextPatient.queueNumber}</div>
+          <div class="next-patient-mockup-divider"></div>
+          <div class="next-patient-mockup-info">
+            <span class="next-patient-mockup-text">${escapeHtml(nextPatient.name)}</span>
+            <small class="next-patient-mockup-sub">Waiting for consultation...</small>
+          </div>
         </div>
-        <small>PH ID: ${escapeHtml(nextPatient.philHealthId || 'N/A')}</small>
       `;
     } else {
       adminNextPatient.innerHTML = `
-        <strong>No queue yet.</strong>
-        <small>Awaiting the next patient.</small>
+        <div class="next-patient-mockup-box empty">
+          <div class="next-patient-mockup-qnum">---</div>
+          <div class="next-patient-mockup-divider"></div>
+          <div class="next-patient-mockup-info">
+            <span class="next-patient-mockup-text">Waiting for consultation...</span>
+          </div>
+        </div>
       `;
     }
   }
@@ -1469,41 +1492,48 @@ function renderAdminQueue() {
     }
   }
 
+  const searchFilter = document.getElementById('queue-search-filter')?.value?.trim().toLowerCase() || '';
+  const patientsToRender = searchFilter
+    ? state.patients.filter((p) => {
+        const nameMatch = (p.name || '').toLowerCase().includes(searchFilter);
+        const numMatch = String(p.queueNumber || '').includes(searchFilter);
+        const phMatch = (p.philHealthId || '').toLowerCase().includes(searchFilter);
+        const statusMatch = (p.patientStatus || p.type || '').toLowerCase().includes(searchFilter);
+        return nameMatch || numMatch || phMatch || statusMatch;
+      })
+    : state.patients;
+
   if (state.patients.length === 0) {
-    patientList.innerHTML = '<li class="empty-state">No patients have been added yet.</li>';
+    patientList.innerHTML = '<tr><td colspan="5" class="mockup-table-empty">No patients have been added to the queue yet.</td></tr>';
     return;
   }
 
-  patientList.innerHTML = state.patients
+  if (patientsToRender.length === 0) {
+    patientList.innerHTML = '<tr><td colspan="5" class="mockup-table-empty">No matching patients found in queue.</td></tr>';
+    return;
+  }
+
+  patientList.innerHTML = patientsToRender
     .map(
       (patient) => {
         const patientType = patient.patientStatus || patient.type || 'regular';
-        const philHealthStatus = patient.philHealthStatus || 'no-philhealth';
-        const actionButtons = [];
-
-        if (isAdminPage) {
-          actionButtons.push(`<button class="btn btn-secondary" data-action="edit" data-id="${patient.id}">Edit</button>`);
-          const isCurrentPatient = patient.status === 'serving';
-          actionButtons.push(`<button class="btn btn-primary" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>`);
-          actionButtons.push(`<button class="btn btn-warning" data-action="skip" data-id="${patient.id}">Skip</button>`);
-          actionButtons.push(`<button class="btn btn-danger" data-action="delete" data-id="${patient.id}">Delete</button>`);
-        }
+        const isCurrentPatient = patient.status === 'serving';
 
         return `
-          <li class="queue-item">
-            <div>
-              <strong>#${patient.queueNumber} — ${escapeHtml(patient.name)}</strong>
-              <div class="badge-group">
-                <span class="badge ${patient.status}">${patient.status}</span>
-                <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
-                <span class="badge philhealth-${philHealthStatus}">${philHealthStatus.replace(/-/g, ' ')}</span>
+          <tr class="mockup-table-row" data-id="${patient.id}">
+            <td class="col-qnum">#${patient.queueNumber}</td>
+            <td class="col-name">${escapeHtml(patient.name)}</td>
+            <td class="col-priority"><span class="mockup-badge badge-priority type-${patientType}">${patientTypeLabel(patientType)}</span></td>
+            <td class="col-status"><span class="mockup-badge badge-status-${patient.status}"><i class="fa-regular fa-clock"></i> ${patient.status === 'waiting' ? 'Waiting' : patient.status}</span></td>
+            <td class="col-action">
+              <div class="mockup-table-actions">
+                <button class="mockup-tbl-btn btn-tbl-edit" data-action="edit" data-id="${patient.id}" title="Edit Patient Details"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button class="mockup-tbl-btn btn-tbl-serve" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}" title="${isCurrentPatient ? 'Done' : 'Serve'}">${isCurrentPatient ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-play"></i>'}</button>
+                <button class="mockup-tbl-btn btn-tbl-skip" data-action="skip" data-id="${patient.id}" title="Skip"><i class="fa-solid fa-angles-right"></i></button>
+                <button class="mockup-tbl-btn btn-tbl-delete" data-action="delete" data-id="${patient.id}" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
               </div>
-              <small>PH ID: ${escapeHtml(patient.philHealthId || 'N/A')}</small>
-            </div>
-            <div class="actions">
-              ${actionButtons.join('')}
-            </div>
-          </li>
+            </td>
+          </tr>
         `;
       },
     )
@@ -1537,40 +1567,60 @@ function renderDoctorQueue() {
 
   if (currentPatientCard) {
     if (servingPatient) {
+      const phStatus = servingPatient.philHealthStatus || 'no-philhealth';
+      const isYakapReady = phStatus === 'registered';
+      const phLabel = philHealthStatusLabel(phStatus);
+      const patType = servingPatient.patientStatus || servingPatient.type || 'regular';
+
       currentPatientCard.innerHTML = `
-        <div id="doctor-status-indicator" class="doctor-status-indicator serving"></div>
-        <div class="doctor-current-patient-details">
-          <strong>#${servingPatient.queueNumber} — ${escapeHtml(servingPatient.name)}</strong>
-          <div class="badge-group">
-            <span class="badge serving">Serving</span>
-            <span class="badge type-${servingPatient.patientStatus || servingPatient.type || 'regular'}">${patientTypeLabel(servingPatient.patientStatus || servingPatient.type)}</span>
+        <div class="doctor-serving-banner">
+          <div class="doctor-serving-qbadge">
+            <span class="qbadge-num">#${servingPatient.queueNumber}</span>
+            <span class="qbadge-status"><span class="live-dot"></span> SERVING</span>
           </div>
-          <small>Queue #${servingPatient.queueNumber}</small>
-          <small>PH ID: ${escapeHtml(servingPatient.philHealthId || 'N/A')}</small>
+          <div class="doctor-serving-vdivider"></div>
+          <div class="doctor-serving-body">
+            <div class="doctor-serving-row-main">
+              <h3 class="doctor-serving-pname">${escapeHtml(servingPatient.name)}</h3>
+              <span class="mockup-badge badge-priority type-${patType}">${patientTypeLabel(patType)}</span>
+            </div>
+            <div class="doctor-serving-row-sub">
+              <span class="doctor-chip-phid"><i class="fa-regular fa-id-card"></i> PH ID: <strong>${escapeHtml(servingPatient.philHealthId || 'N/A')}</strong></span>
+              <span class="badge philhealth-${phStatus}"><i class="fa-solid fa-shield-heart"></i> ${phLabel}</span>
+              <span class="badge ${isYakapReady ? 'yakap-eligible' : 'yakap-ineligible'}"><i class="fa-solid ${isYakapReady ? 'fa-circle-check' : 'fa-circle-xmark'}"></i> ${isYakapReady ? 'Yakap Ready' : 'Cannot Avail Yakap'}</span>
+            </div>
+          </div>
         </div>
-        <div class="doctor-note-fields">
-          <label class="field-label" for="doctor-icd-code">ICD Code</label>
-          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${escapeHtml(draftIcdCode || servingPatient.icdCode || '')}" />
-          <label class="field-label" for="doctor-consultation-note">Consultation Details</label>
-          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient">${escapeHtml(draftConsultationDetails || servingPatient.consultationDetails || '')}</textarea>
+
+        <div class="doctor-consultation-section">
+          <div class="doctor-field-icd">
+            <label class="field-label" for="doctor-icd-code"><i class="fa-solid fa-tag"></i> ICD-10 Code</label>
+            <input id="doctor-icd-code" type="text" placeholder="e.g. J00, I10, E11" value="${escapeHtml(draftIcdCode || servingPatient.icdCode || '')}" autocomplete="off" />
+          </div>
+          <div class="doctor-field-notes">
+            <label class="field-label" for="doctor-consultation-note"><i class="fa-solid fa-notes-medical"></i> Consultation Notes & Clinical Findings</label>
+            <textarea id="doctor-consultation-note" rows="3" placeholder="Enter patient diagnosis, findings, and clinical notes...">${escapeHtml(draftConsultationDetails || servingPatient.consultationDetails || '')}</textarea>
+          </div>
         </div>
       `;
     } else {
       currentPatientCard.innerHTML = `
-        <div id="doctor-status-indicator" class="doctor-status-indicator"></div>
-        <div class="doctor-current-patient-details">
-          <strong>No patient is being served yet.</strong>
-          <div class="badge-group">
-            <span class="badge waiting">Waiting</span>
+        <div class="doctor-empty-serving-box">
+          <div class="doctor-empty-icon"><i class="fa-solid fa-stethoscope"></i></div>
+          <div class="doctor-empty-info">
+            <h4>No patient is being served yet</h4>
+            <p>Click "Next Patient" below to attend to the next waiting patient.</p>
           </div>
-          <small>Queue # — Full Name</small>
-          <small>PH ID: N/A</small>
         </div>
-        <div class="doctor-note-fields">
-          <label class="field-label" for="doctor-icd-code">ICD Code</label>
-          <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${escapeHtml(draftIcdCode)}" disabled />
-          <label class="field-label" for="doctor-consultation-note">Consultation Details</label>
-          <textarea id="doctor-consultation-note" rows="4" placeholder="Enter consultation details for this patient" disabled>${escapeHtml(draftConsultationDetails)}</textarea>
+        <div class="doctor-consultation-section">
+          <div class="doctor-field-icd">
+            <label class="field-label" for="doctor-icd-code"><i class="fa-solid fa-tag"></i> ICD-10 Code</label>
+            <input id="doctor-icd-code" type="text" placeholder="ICD code" value="${escapeHtml(draftIcdCode)}" disabled />
+          </div>
+          <div class="doctor-field-notes">
+            <label class="field-label" for="doctor-consultation-note"><i class="fa-solid fa-notes-medical"></i> Consultation Notes & Clinical Findings</label>
+            <textarea id="doctor-consultation-note" rows="3" placeholder="Consultation notes will unlock when a patient is active" disabled>${escapeHtml(draftConsultationDetails)}</textarea>
+          </div>
         </div>
       `;
     }
@@ -1588,18 +1638,46 @@ function renderDoctorQueue() {
 
   if (nextPatientCard) {
     if (nextPatient) {
+      const nextPhStatus = nextPatient.philHealthStatus || 'no-philhealth';
+      const nextIsYakapReady = nextPhStatus === 'registered';
+      const nextPhLabel = philHealthStatusLabel(nextPhStatus);
+      const nextPatType = nextPatient.patientStatus || nextPatient.type || 'regular';
       nextPatientCard.innerHTML = `
-        <strong>#${nextPatient.queueNumber} — ${escapeHtml(nextPatient.name)}</strong>
-        <div class="badge-group">
-          <span class="badge waiting">Waiting</span>
-          <span class="badge type-${nextPatient.patientStatus || nextPatient.type || 'regular'}">${patientTypeLabel(nextPatient.patientStatus || nextPatient.type)}</span>
+        <div class="doctor-next-banner">
+          <div class="doctor-next-qbadge">
+            <span class="qbadge-next-label">NEXT</span>
+            <span class="qbadge-next-num">#${nextPatient.queueNumber}</span>
+          </div>
+          <div class="doctor-next-vdivider"></div>
+          <div class="doctor-next-body">
+            <div class="doctor-next-row-main">
+              <h4 class="doctor-next-pname">${escapeHtml(nextPatient.name)}</h4>
+              <span class="mockup-badge badge-priority type-${nextPatType}">${patientTypeLabel(nextPatType)}</span>
+            </div>
+            <div class="doctor-next-row-sub">
+              <span class="badge philhealth-${nextPhStatus}"><i class="fa-solid fa-shield-heart"></i> ${nextPhLabel}</span>
+              <span class="badge ${nextIsYakapReady ? 'yakap-eligible' : 'yakap-ineligible'}"><i class="fa-solid ${nextIsYakapReady ? 'fa-circle-check' : 'fa-circle-xmark'}"></i> ${nextIsYakapReady ? 'Yakap Ready' : 'Cannot Avail'}</span>
+            </div>
+            <div class="doctor-next-row-footer">
+              <span class="next-phid-tag"><i class="fa-regular fa-id-card"></i> PH ID: <strong>${escapeHtml(nextPatient.philHealthId || 'N/A')}</strong></span>
+            </div>
+          </div>
         </div>
-        <small>PH ID: ${escapeHtml(nextPatient.philHealthId || 'N/A')}</small>
+        <div class="doctor-next-call-preview">
+          <div class="preview-icon"><i class="fa-regular fa-clock"></i></div>
+          <div class="preview-text">
+            <strong>Waiting for consultation</strong>
+            <p>Click "Next Patient" to call this patient in when ready.</p>
+          </div>
+        </div>
       `;
     } else {
       nextPatientCard.innerHTML = `
-        <strong>No queue yet.</strong>
-        <small>Awaiting the next patient.</small>
+        <div class="doctor-next-empty-state">
+          <i class="fa-regular fa-clock"></i>
+          <h4>No patients waiting</h4>
+          <p>The queue is currently clear.</p>
+        </div>
       `;
     }
   }
@@ -1608,26 +1686,31 @@ function renderDoctorQueue() {
   const normalPatients = state.patients.filter((patient) => patient.status !== 'follow-up');
 
   if (state.patients.length === 0) {
-    patientList.innerHTML = '<tr><td class="queue-table-empty" colspan="6">No patients have been added yet.</td></tr>';
+    patientList.innerHTML = '<tr><td class="queue-table-empty" colspan="8">No patients have been added yet.</td></tr>';
   } else if (normalPatients.length === 0) {
-    patientList.innerHTML = '<tr><td class="queue-table-empty" colspan="6">No patients in normal queue.</td></tr>';
+    patientList.innerHTML = '<tr><td class="queue-table-empty" colspan="8">No patients in normal queue.</td></tr>';
   } else {
     patientList.innerHTML = normalPatients
       .map((patient) => {
         const patientType = patient.patientStatus || patient.type || 'regular';
         const isCurrentPatient = patient.status === 'serving';
+        const phStatus = patient.philHealthStatus || 'no-philhealth';
+        const isYakapReady = phStatus === 'registered';
+        const phLabel = philHealthStatusLabel(phStatus);
         return `
         <tr>
           <td class="queue-table-number">#${patient.queueNumber}</td>
-          <td class="queue-table-name">${escapeHtml(patient.name)}</td>
-          <td><span class="badge ${patient.status}">${patient.status}</span></td>
-          <td><span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span></td>
+          <td class="queue-table-name"><strong>${escapeHtml(patient.name)}</strong></td>
+          <td><span class="mockup-badge badge-priority type-${patientType}">${patientTypeLabel(patientType)}</span></td>
+          <td><span class="badge philhealth-${phStatus}"><i class="fa-solid fa-shield-heart"></i> ${phLabel}</span></td>
+          <td><span class="badge ${isYakapReady ? 'yakap-eligible' : 'yakap-ineligible'}"><i class="fa-solid ${isYakapReady ? 'fa-circle-check' : 'fa-circle-xmark'}"></i> ${isYakapReady ? 'Ready' : 'Ineligible'}</span></td>
           <td>${escapeHtml(patient.philHealthId || 'N/A')}</td>
+          <td><span class="badge ${patient.status}">${patient.status === 'waiting' ? '<i class="fa-regular fa-clock"></i> Waiting' : patient.status}</span></td>
           <td>
             <div class="actions">
-              <button class="btn btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? 'Done' : 'Serve'}</button>
-              <button class="btn btn-warning" data-doctor-action="skip" data-id="${patient.id}">Skip</button>
-              <button class="btn btn-secondary" data-doctor-action="recall" data-id="${patient.id}">Recall</button>
+              <button class="btn btn-sm btn-primary" data-doctor-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}">${isCurrentPatient ? '<i class="fa-solid fa-check"></i> Done' : '<i class="fa-solid fa-play"></i> Serve'}</button>
+              <button class="btn btn-sm btn-secondary" data-doctor-action="recall" data-id="${patient.id}" title="Recall"><i class="fa-solid fa-rotate"></i></button>
+              <button class="btn btn-sm btn-warning" data-doctor-action="skip" data-id="${patient.id}" title="Skip"><i class="fa-solid fa-angles-right"></i></button>
             </div>
           </td>
         </tr>
@@ -1652,6 +1735,9 @@ function renderDoctorQueue() {
           const patientType = patient.patientStatus || patient.type || 'regular';
           const isReady = (patient.followUpStatus || 'none') === 'ready_for_doctor';
           const reasonText = patient.followUpReason || 'Follow-up';
+          const phStatus = patient.philHealthStatus || 'no-philhealth';
+          const isYakapReady = phStatus === 'registered';
+          const phLabel = philHealthStatusLabel(phStatus);
           return `
           <li class="queue-item">
             <div>
@@ -1659,8 +1745,11 @@ function renderDoctorQueue() {
               <div class="badge-group">
                 <span class="badge follow-up">Follow-up</span>
                 <span class="badge type-${patientType}">${patientTypeLabel(patientType)}</span>
+                <span class="badge philhealth-${phStatus}"><i class="fa-solid fa-shield-heart"></i> ${phLabel}</span>
+                <span class="badge ${isYakapReady ? 'yakap-eligible' : 'yakap-ineligible'}"><i class="fa-solid ${isYakapReady ? 'fa-circle-check' : 'fa-circle-xmark'}"></i> ${isYakapReady ? 'Yakap Ready' : 'Cannot Avail'}</span>
               </div>
               <small>${escapeHtml(reasonText)}</small>
+              <small>PH ID: ${escapeHtml(patient.philHealthId || 'N/A')}</small>
               <small>${isReady ? '✓ Ready for Doctor' : 'Waiting for Procedure'}</small>
             </div>
             <div class="actions">
@@ -2548,6 +2637,28 @@ function initAdminPage() {
     });
   }
 
+  const closeEditModalBtn = document.getElementById('close-edit-modal-btn');
+  if (closeEditModalBtn && editModal) {
+    closeEditModalBtn.addEventListener('click', () => {
+      editModal.hidden = true;
+    });
+  }
+
+  if (editModal) {
+    editModal.addEventListener('click', (e) => {
+      if (e.target === editModal) {
+        editModal.hidden = true;
+      }
+    });
+  }
+
+  const queueSearchFilter = document.getElementById('queue-search-filter');
+  if (queueSearchFilter) {
+    queueSearchFilter.addEventListener('input', () => {
+      renderAdminQueue();
+    });
+  }
+
   initHistoryEditForm();
 
   // History sort dropdown
@@ -2681,6 +2792,10 @@ function initAdminPage() {
         editPatientStatusSelect.value = patient.patientStatus || patient.type || 'regular';
         editPhilHealthStatusSelect.value = patient.philHealthStatus || 'no-philhealth';
         editModal.hidden = false;
+        setTimeout(() => {
+          editPatientNameInput.focus();
+          editPatientNameInput.select();
+        }, 50);
       }
     } else if (action === 'edit-history') {
       openHistoryEditModal(id);
@@ -2931,6 +3046,15 @@ function initAdminAuth() {
   // Clear errors when user types
   [usernameInput, passwordInput].forEach(input => {
     input?.addEventListener('input', () => showAdminLoginError(''));
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      const editModal = document.getElementById('edit-patient-modal');
+      if (editModal && !editModal.hidden) {
+        editModal.hidden = true;
+      }
+    }
   });
 
   if (loginForm) {
@@ -5030,17 +5154,17 @@ async function handleDoctorPdfSelection(file) {
 
   // Set converting status UI
   if (conversionStatus) {
-    conversionStatus.className = 'yakap-conversion-status converting';
+    conversionStatus.className = 'yakap-status-badge converting';
     if (conversionText) {
-      conversionText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Converting PDF pages to high-resolution PNG for printing...';
+      conversionText.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Converting PDF to PNG...';
     }
   }
 
   if (previewContainer) {
     previewContainer.innerHTML = `
-      <div style="padding: 36px 16px; text-align: center; color: var(--text-muted, #64748b);">
-        <i class="fa-solid fa-spinner fa-spin fa-2x" style="color: #2563eb; margin-bottom: 10px;"></i>
-        <p style="margin: 0; font-size: 0.95rem;">Rendering PDF pages to PNG (High-DPI)...</p>
+      <div style="padding: 30px 16px; text-align: center; color: #94a3b8;">
+        <i class="fa-solid fa-spinner fa-spin fa-2x" style="color: #0284c7; margin-bottom: 10px;"></i>
+        <p style="margin: 0; font-size: 0.9rem;">Rendering PDF pages to PNG (High-DPI)...</p>
       </div>
     `;
   }
@@ -5052,9 +5176,9 @@ async function handleDoctorPdfSelection(file) {
     yakapConvertedPngPages = pages;
 
     if (conversionStatus) {
-      conversionStatus.className = 'yakap-conversion-status success';
+      conversionStatus.className = 'yakap-status-badge success';
       if (conversionText) {
-        conversionText.innerHTML = `<i class="fa-solid fa-circle-check"></i> Converted ${pages.length} page${pages.length > 1 ? 's' : ''} to high-resolution PNG successfully (Ready for Half-A4 Landscape print)`;
+        conversionText.innerHTML = `<i class="fa-solid fa-circle-check"></i> Ready for Print (${pages.length} page${pages.length > 1 ? 's' : ''})`;
       }
     }
 
@@ -5067,11 +5191,8 @@ async function handleDoctorPdfSelection(file) {
       }
 
       previewContainer.innerHTML = `
-        <div class="yakap-png-preview-card" style="cursor: zoom-in; position: relative;" title="Click to view full-resolution PNG">
-          <img src="${primaryPage.dataUrl}" alt="Converted PNG Preview" class="yakap-preview-img" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.12);" />
-          <div style="margin-top: 10px; font-size: 0.85rem; color: #2563eb; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600;">
-            <i class="fa-solid fa-magnifying-glass-plus"></i> Click preview to inspect full size PNG
-          </div>
+        <div class="yakap-png-preview-card" style="cursor: zoom-in; width: 100%; display: flex; align-items: center; justify-content: center;" title="Click to view full-resolution PNG">
+          <img src="${primaryPage.dataUrl}" alt="Converted PNG Preview" class="yakap-preview-img" />
         </div>
       `;
 
@@ -5084,7 +5205,7 @@ async function handleDoctorPdfSelection(file) {
   } catch (err) {
     console.error('PDF Conversion error:', err);
     if (conversionStatus) {
-      conversionStatus.className = 'yakap-conversion-status error';
+      conversionStatus.className = 'yakap-status-badge error';
       if (conversionText) {
         conversionText.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Error converting PDF: ${escapeHtml(err.message || 'Unknown error')}`;
       }
@@ -5114,10 +5235,12 @@ function resetDoctorPdfUpload() {
   const dropError = document.getElementById('yakap-drop-error');
   const previewContainer = document.getElementById('yakap-png-preview-container');
   const sendBtn = document.getElementById('btn-send-prescription-admin');
+  const linkedBadge = document.getElementById('yakap-linked-badge');
 
   if (fileInput) fileInput.value = '';
   if (dropError) dropError.hidden = true;
   if (processingCard) processingCard.hidden = true;
+  if (linkedBadge) linkedBadge.hidden = true;
   if (dropzone) {
     dropzone.style.display = 'block';
     dropzone.classList.remove('dragover');
@@ -5134,6 +5257,71 @@ function resetDoctorPdfUpload() {
 }
 
 /**
+ * Simple 2-Second Pop-up Notification (Replaces intrusive browser alert dialogs)
+ */
+let yakapPopupTimer = null;
+function showYakapPopup({ title = 'Successfully Uploaded!', message = '', type = 'success', duration = 2000 }) {
+  let popupEl = document.getElementById('yakap-simple-popup');
+  if (!popupEl) {
+    popupEl = document.createElement('div');
+    popupEl.id = 'yakap-simple-popup';
+    popupEl.className = 'yakap-simple-popup';
+    popupEl.setAttribute('aria-live', 'polite');
+    popupEl.innerHTML = `
+      <div class="yakap-popup-card">
+        <div class="yakap-popup-icon-wrap" id="yakap-popup-icon">
+          <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <div class="yakap-popup-body">
+          <h4 id="yakap-popup-title">Successfully Uploaded!</h4>
+          <p id="yakap-popup-message"></p>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(popupEl);
+  }
+
+  const iconWrap = popupEl.querySelector('#yakap-popup-icon');
+  const titleEl = popupEl.querySelector('#yakap-popup-title');
+  const msgEl = popupEl.querySelector('#yakap-popup-message');
+
+  if (iconWrap) {
+    iconWrap.className = `yakap-popup-icon-wrap ${type}`;
+    if (type === 'success') {
+      iconWrap.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+    } else if (type === 'error') {
+      iconWrap.innerHTML = '<i class="fa-solid fa-circle-xmark"></i>';
+    } else if (type === 'warning') {
+      iconWrap.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+    } else {
+      iconWrap.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
+    }
+  }
+
+  if (titleEl) titleEl.textContent = title;
+  if (msgEl) {
+    msgEl.textContent = message;
+    msgEl.style.display = message ? 'block' : 'none';
+  }
+
+  if (yakapPopupTimer) {
+    clearTimeout(yakapPopupTimer);
+    yakapPopupTimer = null;
+  }
+
+  popupEl.hidden = false;
+  void popupEl.offsetWidth; // Force reflow for CSS transition
+  popupEl.classList.add('show');
+
+  yakapPopupTimer = setTimeout(() => {
+    popupEl.classList.remove('show');
+    setTimeout(() => {
+      popupEl.hidden = true;
+    }, 250);
+  }, duration);
+}
+
+/**
  * Updates the Doctor Serving Badge in the Yakap prescription header
  */
 function updateDoctorServingBadge() {
@@ -5143,7 +5331,10 @@ function updateDoctorServingBadge() {
 
   if (servingText) {
     if (serving) {
-      servingText.innerHTML = `<strong>Serving:</strong> #${serving.queueNumber} — ${escapeHtml(serving.name)}`;
+      const phStatus = serving.philHealthStatus || 'no-philhealth';
+      const isYakapReady = phStatus === 'registered';
+      const phLabel = philHealthStatusLabel(phStatus);
+      servingText.innerHTML = `<strong>Serving:</strong> #${serving.queueNumber} — ${escapeHtml(serving.name)} <span class="badge philhealth-${phStatus}" style="font-size:0.75rem;margin:0 4px;"><i class="fa-solid fa-shield-heart"></i> ${phLabel}</span> <span class="badge ${isYakapReady ? 'yakap-eligible' : 'yakap-ineligible'}" style="font-size:0.75rem;"><i class="fa-solid ${isYakapReady ? 'fa-circle-check' : 'fa-circle-xmark'}"></i> ${isYakapReady ? 'Yakap Ready' : 'Cannot Avail'}</span>`;
       if (servingBadge) servingBadge.classList.add('active');
     } else {
       servingText.textContent = 'No active patient serving';
@@ -5159,22 +5350,58 @@ function linkDoctorServingPatientToYakap(showAlert = false) {
   const serving = getCurrentServingPatient();
   const patInput = document.getElementById('doctor-prescription-patient');
   const queueInput = document.getElementById('doctor-prescription-queue');
+  const linkedBadge = document.getElementById('yakap-linked-badge');
+  const phBox = document.getElementById('yakap-patient-philhealth-box');
+  const phStatusVal = document.getElementById('yakap-ph-status-val');
+  const phEligibilityBadge = document.getElementById('yakap-ph-eligibility-badge');
+  const phEligibilityText = document.getElementById('yakap-ph-eligibility-text');
 
   if (serving) {
+    const phStatus = serving.philHealthStatus || 'no-philhealth';
+    const isYakapReady = phStatus === 'registered';
+    const phLabel = philHealthStatusLabel(phStatus);
+
     if (patInput && (!patInput.value.trim() || showAlert)) {
       patInput.value = serving.name || '';
     }
     if (queueInput && (!queueInput.value.trim() || showAlert)) {
       queueInput.value = serving.queueNumber || '';
     }
+    if (linkedBadge) {
+      linkedBadge.hidden = false;
+      linkedBadge.innerHTML = `<i class="fa-solid fa-link"></i> Linked: #${serving.queueNumber} — ${escapeHtml(serving.name)} &bull; ${phLabel} (${isYakapReady ? '✓ Yakap Ready' : 'Cannot Avail'})`;
+    }
+    if (phBox) {
+      phBox.hidden = false;
+      phBox.className = `yakap-ph-status-banner ${isYakapReady ? 'ready' : 'not-ready'}`;
+      if (phStatusVal) phStatusVal.textContent = phLabel;
+      if (phEligibilityBadge) {
+        phEligibilityBadge.className = `yakap-ph-eligibility-pill ${isYakapReady ? 'ready' : 'not-ready'}`;
+      }
+      if (phEligibilityText) {
+        phEligibilityText.textContent = isYakapReady ? 'Yakap Prescription Ready (Can Avail)' : 'Cannot Avail Yakap (PhilHealth Required)';
+      }
+    }
     updateDoctorServingBadge();
     if (showAlert) {
-      alert(`Linked patient #${serving.queueNumber} — ${serving.name} to this prescription.`);
+      showYakapPopup({
+        title: 'Patient Linked',
+        message: `Linked #${serving.queueNumber} — ${serving.name} (PhilHealth: ${phLabel} - ${isYakapReady ? 'Yakap Ready' : 'Cannot Avail Yakap'})`,
+        type: isYakapReady ? 'info' : 'warning',
+        duration: 2500
+      });
     }
   } else {
+    if (linkedBadge) linkedBadge.hidden = true;
+    if (phBox) phBox.hidden = true;
     updateDoctorServingBadge();
     if (showAlert) {
-      alert('No patient is currently being served. You can enter the patient name manually.');
+      showYakapPopup({
+        title: 'No Active Patient',
+        message: 'No patient is currently serving. Please enter the name manually.',
+        type: 'warning',
+        duration: 2000
+      });
     }
   }
 }
@@ -5184,7 +5411,12 @@ function linkDoctorServingPatientToYakap(showAlert = false) {
  */
 async function sendPrescriptionToAdmin() {
   if (!yakapSelectedPdfFile || !yakapConvertedPngPages || yakapConvertedPngPages.length === 0) {
-    alert('Please select and convert a PDF prescription first.');
+    showYakapPopup({
+      title: 'No PDF Selected',
+      message: 'Please drop or browse a valid PDF prescription first.',
+      type: 'warning',
+      duration: 2000
+    });
     return;
   }
 
@@ -5195,7 +5427,12 @@ async function sendPrescriptionToAdmin() {
 
   const patientName = patientInput?.value?.trim() || '';
   if (!patientName) {
-    alert('Please enter the patient name for this prescription.');
+    showYakapPopup({
+      title: 'Patient Name Required',
+      message: 'Please enter the patient name before sending.',
+      type: 'warning',
+      duration: 2000
+    });
     patientInput?.focus();
     return;
   }
@@ -5205,7 +5442,7 @@ async function sendPrescriptionToAdmin() {
 
   const originalBtnHtml = sendBtn.innerHTML;
   sendBtn.disabled = true;
-  sendBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending Converted PNG to Admin...';
+  sendBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending to Admin...';
 
   try {
     let pdfBase64 = '';
@@ -5241,16 +5478,32 @@ async function sendPrescriptionToAdmin() {
         broadcastPrescriptions(data.prescriptions);
       }
 
-      alert(`Prescription for ${patientName} uploaded and converted to PNG successfully!\nAdmin desk has received it and can now print on landscape half-A4 paper.`);
+      // Simple 2-Second Pop-up Notification (Success)
+      showYakapPopup({
+        title: 'Successfully Uploaded!',
+        message: `Prescription for ${patientName} sent to Admin & Pharmacy`,
+        type: 'success',
+        duration: 2000
+      });
 
       resetDoctorPdfUpload();
       renderDoctorPrescriptions();
     } else {
-      alert(`Failed to upload prescription: ${data?.message || 'Server error'}`);
+      showYakapPopup({
+        title: 'Upload Failed',
+        message: data?.message || 'Server error while sending prescription',
+        type: 'error',
+        duration: 2000
+      });
     }
   } catch (err) {
     console.error('Error sending prescription to admin:', err);
-    alert('Failed to send prescription. Check network or server connection.');
+    showYakapPopup({
+      title: 'Send Error',
+      message: 'Check network or server connection.',
+      type: 'error',
+      duration: 2000
+    });
   } finally {
     if (sendBtn) {
       sendBtn.disabled = false;
@@ -5482,11 +5735,27 @@ function renderAdminPrescriptions() {
   const dispensedStat = document.getElementById('stat-yakap-dispensed');
   const countPill = document.getElementById('yakap-rx-count-pill');
   const searchInput = document.getElementById('admin-yakap-search');
+  const searchClearBtn = document.getElementById('admin-yakap-search-clear');
   const filterSelect = document.getElementById('admin-yakap-filter');
 
   if (!tableBody) return;
 
   const prescriptions = Array.isArray(state.prescriptions) ? state.prescriptions : [];
+
+  // Toggle clear button
+  if (searchClearBtn && searchInput) {
+    searchClearBtn.hidden = !searchInput.value.trim();
+  }
+
+  // Update active filter wrap highlight
+  const filterWrap = filterSelect?.closest('.yakap-select-wrap');
+  if (filterWrap && filterSelect) {
+    if (filterSelect.value && filterSelect.value !== 'all') {
+      filterWrap.classList.add('has-filter');
+    } else {
+      filterWrap.classList.remove('has-filter');
+    }
+  }
 
   // Calculate stats
   const totalCount = prescriptions.length;
@@ -5807,6 +6076,7 @@ function openImageViewModal(imgSrc, title = 'Prescription Preview') {
  */
 function initAdminYakapPrescription() {
   const searchInput = document.getElementById('admin-yakap-search');
+  const searchClearBtn = document.getElementById('admin-yakap-search-clear');
   const filterSelect = document.getElementById('admin-yakap-filter');
   const refreshBtn = document.getElementById('btn-refresh-prescriptions');
   const adminTable = document.getElementById('admin-yakap-prescriptions-table-body');
@@ -5816,13 +6086,36 @@ function initAdminYakapPrescription() {
   if (searchInput && !searchInput.dataset.initialized) {
     searchInput.dataset.initialized = 'true';
     searchInput.addEventListener('input', () => {
+      if (searchClearBtn) {
+        searchClearBtn.hidden = !searchInput.value.trim();
+      }
       renderAdminPrescriptions();
+    });
+  }
+
+  if (searchClearBtn && !searchClearBtn.dataset.initialized) {
+    searchClearBtn.dataset.initialized = 'true';
+    searchClearBtn.addEventListener('click', () => {
+      if (searchInput) {
+        searchInput.value = '';
+        searchClearBtn.hidden = true;
+        searchInput.focus();
+        renderAdminPrescriptions();
+      }
     });
   }
 
   if (filterSelect && !filterSelect.dataset.initialized) {
     filterSelect.dataset.initialized = 'true';
     filterSelect.addEventListener('change', () => {
+      const wrap = filterSelect.closest('.yakap-select-wrap');
+      if (wrap) {
+        if (filterSelect.value && filterSelect.value !== 'all') {
+          wrap.classList.add('has-filter');
+        } else {
+          wrap.classList.remove('has-filter');
+        }
+      }
       renderAdminPrescriptions();
     });
   }

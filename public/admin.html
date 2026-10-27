@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>RHU II Admin Panel</title>
-    <link rel="stylesheet" href="assets/styles.css?v=6.1" />
+    <link rel="stylesheet" href="assets/styles.css?v=7.0" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <link rel="icon" type="image/png" href="assets/favicon-32x32.png" sizes="32x32" />
     <link rel="icon" type="image/png" href="assets/favicon-16x16.png" sizes="16x16" />
@@ -289,82 +289,135 @@
 
           <!-- Patient Queue Page -->
           <div id="page-queue" class="page-section">
-            <div class="page-header">
-              <h2>Patient Queue</h2>
-              <p class="page-subtitle">Manage patient queue and appointments</p>
+            <div class="page-header queue-page-header">
+              <div class="queue-header-titles">
+                <h2>Patient Queue</h2>
+                <p class="page-subtitle">Manage Patient Queue and Appointments</p>
+              </div>
+              <div class="queue-header-actions">
+                <button id="print-consultation-btn" class="btn queue-header-btn btn-print" type="button" title="Print Consultation"><i class="fa-solid fa-print"></i> Print Consultation</button>
+                <button id="reset-btn" class="btn queue-header-btn btn-reset" type="button" title="Reset Queue"><i class="fa-solid fa-rotate-left"></i> Reset Queue</button>
+              </div>
             </div>
 
-            <!-- Add Patient Card -->
-            <div class="card">
-              <h3>Add New Patient</h3>
-              <form id="patient-form" class="patient-form" method="post" action="">
-                <div class="form-grid">
-                  <input id="patient-name" name="name" type="text" placeholder="Full Name" required />
-                  <input id="patient-philhealth-id" name="philHealthId" type="text" placeholder="PhilHealth ID" />
-                  <select id="patient-status" name="patientStatus" aria-label="Patient Status">
-                    <option value="regular">REGULAR</option>
-                    <option value="senior">SENIOR</option>
-                    <option value="pwd">PWD</option>
-                    <option value="emergency">EMERGENCY</option>
-                  </select>
-                  <select id="philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
-                    <option value="no-philhealth">NO PHILHEALTH</option>
-                    <option value="registered">REGISTERED</option>
-                    <option value="not-registered">NOT REGISTERED</option>
-                    <option value="other-facility">OTHER FACILITY</option>
-                  </select>
+            <!-- Exact 2-Column Clinical Dashboard Grid -->
+            <div class="admin-queue-dashboard">
+              <!-- Left Column: Add Patient & Current Patient -->
+              <div class="admin-queue-col-left">
+                <!-- Card 1: Add Patient -->
+                <div class="card mockup-card card-add-patient">
+                  <div class="mockup-card-header">
+                    <span class="mockup-header-icon blue-circle"><i class="fa-solid fa-plus"></i></span>
+                    <h3 class="mockup-header-title">Add Patient</h3>
+                  </div>
+                  <form id="patient-form" class="patient-form mockup-add-form" method="post" action="">
+                    <div class="mockup-form-row-4">
+                      <div class="mockup-field">
+                        <label for="patient-name">Full Name</label>
+                        <input id="patient-name" name="name" type="text" placeholder="Enter patient full name" required autocomplete="off" />
+                      </div>
+                      <div class="mockup-field">
+                        <label for="patient-philhealth-id">PhilHealth ID</label>
+                        <input id="patient-philhealth-id" name="philHealthId" type="text" placeholder="Enter PhilHealth ID" autocomplete="off" />
+                      </div>
+                      <div class="mockup-field">
+                        <label for="patient-status">Priority</label>
+                        <select id="patient-status" name="patientStatus" aria-label="Priority">
+                          <option value="regular">Regular</option>
+                          <option value="senior">Senior Citizen</option>
+                          <option value="pwd">PWD</option>
+                          <option value="emergency">Emergency</option>
+                        </select>
+                      </div>
+                      <div class="mockup-field">
+                        <label for="philhealth-status">PhilHealth Status</label>
+                        <select id="philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
+                          <option value="no-philhealth">No PhilHealth</option>
+                          <option value="registered">Registered</option>
+                          <option value="not-registered">Not Registered</option>
+                          <option value="other-facility">Other Facility</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="mockup-form-actions">
+                      <button type="submit" class="btn mockup-btn-add"><i class="fa-solid fa-plus"></i> Add Patient</button>
+                    </div>
+                  </form>
                 </div>
-                <button type="submit" class="btn btn-primary">Add Patient</button>
-              </form>
-            </div>
 
-            <!-- Current Patient Card -->
-            <div class="card card-serving">
-              <div class="card-header">
-                <h3>Current Patient</h3>
-                <span id="admin-patient-count" class="pill">0 patients in queue</span>
-              </div>
-              <div id="admin-current-patient" class="current-patient-display">
-                <strong>No patient is being served yet.</strong>
-                <div class="badge-group">
-                  <span class="badge waiting">Waiting</span>
+                <!-- Card 2: Current Patient -->
+                <div class="card mockup-card card-current-patient">
+                  <div class="mockup-card-header">
+                    <span class="mockup-header-icon blue-circle"><i class="fa-solid fa-user"></i></span>
+                    <h3 class="mockup-header-title">Current Patient</h3>
+                    <span id="admin-patient-count" class="pill" style="display:none;">0 patients in queue</span>
+                  </div>
+
+                  <div id="admin-current-patient" class="current-patient-display">
+                    <strong>No patient is being served yet.</strong>
+                    <div class="badge-group">
+                      <span class="badge waiting">Waiting</span>
+                    </div>
+                    <small>Queue # — Full Name</small>
+                    <small>PH ID: N/A</small>
+                  </div>
+
+                  <div class="mockup-action-row">
+                    <button id="admin-serve-next-btn" class="mockup-act-btn btn-act-next" type="button"><i class="fa-solid fa-play"></i> Next Patient</button>
+                    <button id="admin-recall-btn" class="mockup-act-btn btn-act-recall" type="button"><i class="fa-solid fa-rotate"></i> Recall</button>
+                    <button id="admin-skip-btn" class="mockup-act-btn btn-act-skip" type="button"><i class="fa-solid fa-angles-right"></i> Skip</button>
+                    <button id="admin-finish-btn" class="mockup-act-btn btn-act-finish" type="button"><i class="fa-solid fa-check"></i> Finish</button>
+                    <button id="admin-followup-btn" class="mockup-act-btn btn-act-followup" type="button"><i class="fa-solid fa-users"></i> Send to Follow-up</button>
+                  </div>
                 </div>
-                <small>Queue # — Full Name</small>
-                <small>PH ID: N/A</small>
               </div>
-              <div class="action-row">
-                <button id="admin-serve-next-btn" class="btn btn-primary" type="button">Next Patient</button>
-                <button id="admin-recall-btn" class="btn btn-secondary" type="button">Recall</button>
-                <button id="admin-skip-btn" class="btn btn-warning" type="button">Skip</button>
-                <button id="admin-finish-btn" class="btn btn-success" type="button">Finish</button>
-                <button id="admin-followup-btn" class="btn btn-info" type="button">Send to Follow-up</button>
-              </div>
-            </div>
 
-            <!-- Next Patient Card -->
-            <div class="card">
-              <h3>Next Patient in Line</h3>
-              <div id="admin-next-patient" class="next-patient-display">
-                <strong>No queue yet.</strong>
-                <small>Awaiting the next patient.</small>
-              </div>
-            </div>
+              <!-- Right Column: Next Patient & Waiting List -->
+              <div class="admin-queue-col-right">
+                <!-- Card 3: Next Patient -->
+                <div class="card mockup-card card-next-patient">
+                  <div class="mockup-card-header">
+                    <span class="mockup-header-icon blue-circle"><i class="fa-regular fa-clock"></i></span>
+                    <h3 class="mockup-header-title">Next Patient</h3>
+                  </div>
+                  <div id="admin-next-patient" class="next-patient-display">
+                    <strong>No queue yet.</strong>
+                    <small>Awaiting the next patient.</small>
+                  </div>
+                </div>
 
-            <!-- Waiting List Card -->
-            <div class="card">
-              <div class="card-header">
-                <h3>Waiting List</h3>
-                <span id="admin-count" class="pill">0 patients</span>
-              </div>
-              <ul id="patient-list" class="queue-list admin-list"></ul>
-            </div>
+                <!-- Card 4: Waiting List -->
+                <div class="card mockup-card card-waiting-list">
+                  <div class="mockup-card-header waiting-list-header">
+                    <div class="waiting-header-left">
+                      <span class="mockup-header-icon blue-circle"><i class="fa-solid fa-users-viewfinder"></i></span>
+                      <h3 class="mockup-header-title">Waiting List</h3>
+                      <span id="admin-count" class="pill" style="display:none;">0 patients</span>
+                    </div>
+                    <div class="waiting-header-right">
+                      <div class="mockup-search-box">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <input type="text" id="queue-search-filter" placeholder="Search patient..." autocomplete="off" />
+                      </div>
+                      <button type="button" class="mockup-filter-btn" title="Filter"><i class="fa-solid fa-filter"></i></button>
+                    </div>
+                  </div>
 
-            <!-- Utility Actions -->
-            <div class="card utility-card">
-              <h3>Utilities</h3>
-              <div class="utility-actions">
-                <button id="reset-btn" class="btn btn-secondary">Reset Queue</button>
-                <button id="print-consultation-btn" class="btn btn-secondary" type="button">Print Consultation</button>
+                  <div class="mockup-table-container">
+                    <table class="mockup-queue-table">
+                      <thead>
+                        <tr>
+                          <th>Queue No.</th>
+                          <th>Patient</th>
+                          <th>Priority</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody id="patient-list"></tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -642,19 +695,29 @@
             <div class="card yakap-table-card">
               <div class="card-header yakap-table-header">
                 <div class="yakap-table-title-group">
-                  <h3>Doctor Uploaded Prescriptions (Converted PNG)</h3>
-                  <span id="yakap-rx-count-pill" class="pill">0 prescriptions</span>
+                  <div class="yakap-table-heading-line">
+                    <i class="fa-solid fa-file-medical table-icon"></i>
+                    <h3>Doctor Uploaded Prescriptions</h3>
+                  </div>
+                  <span id="yakap-rx-count-pill" class="pill yakap-count-pill">0 prescriptions</span>
                 </div>
                 <div class="yakap-filter-row">
                   <div class="yakap-search-wrap">
-                    <i class="fa-solid fa-magnifying-glass"></i>
-                    <input type="text" id="admin-yakap-search" placeholder="Search patient, queue #, Rx#..." />
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="admin-yakap-search" placeholder="Search patient, queue #, Rx#..." autocomplete="off" spellcheck="false" />
+                    <button type="button" id="admin-yakap-search-clear" class="yakap-search-clear" title="Clear search" aria-label="Clear search" hidden>
+                      <i class="fa-solid fa-xmark"></i>
+                    </button>
                   </div>
-                  <select id="admin-yakap-filter" aria-label="Filter status">
-                    <option value="all">All Prescriptions</option>
-                    <option value="active">Pending Print Only</option>
-                    <option value="printed">Printed Only</option>
-                  </select>
+                  <div class="yakap-select-wrap">
+                    <i class="fa-solid fa-filter select-icon"></i>
+                    <select id="admin-yakap-filter" aria-label="Filter status">
+                      <option value="all">All Prescriptions</option>
+                      <option value="active">Pending Print Only</option>
+                      <option value="printed">Printed Only</option>
+                    </select>
+                    <i class="fa-solid fa-chevron-down select-arrow"></i>
+                  </div>
                 </div>
               </div>
 
@@ -680,30 +743,57 @@
             </div>
           </div>
 
-          <!-- Modals (Hidden by default) -->
-          <div id="edit-patient-modal" class="card edit-modal" hidden>
-            <h3>Edit Patient</h3>
-            <form id="edit-patient-form" class="patient-form" method="post" action="">
-              <input id="edit-patient-id" type="hidden" />
-              <input id="edit-patient-name" name="name" type="text" placeholder="Full Name" required />
-              <input id="edit-patient-philhealth-id" name="philHealthId" type="text" placeholder="PhilHealth ID" />
-              <select id="edit-patient-status" name="patientStatus" aria-label="Patient Status">
-                <option value="regular">REGULAR</option>
-                <option value="senior">SENIOR</option>
-                <option value="pwd">PWD</option>
-                <option value="emergency">EMERGENCY</option>
-              </select>
-              <select id="edit-philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
-                <option value="no-philhealth">NO PHILHEALTH</option>
-                <option value="registered">REGISTERED</option>
-                <option value="not-registered">NOT REGISTERED</option>
-                <option value="other-facility">OTHER FACILITY</option>
-              </select>
-              <div class="toolbar">
-                <button type="submit" class="btn btn-primary">Save Changes</button>
-                <button type="button" id="cancel-edit-btn" class="btn btn-secondary">Cancel</button>
+          <!-- Accessible Edit Patient Modal -->
+          <div id="edit-patient-modal" class="edit-modal edit-modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="edit-patient-modal-title">
+            <div class="edit-modal-dialog">
+              <div class="edit-modal-header">
+                <div class="edit-modal-header-left">
+                  <div class="edit-modal-icon-badge"><i class="fa-solid fa-user-pen"></i></div>
+                  <div>
+                    <h3 id="edit-patient-modal-title">Edit Patient Details</h3>
+                    <p class="edit-modal-subtitle">Update patient information and priority category</p>
+                  </div>
+                </div>
+                <button type="button" class="edit-modal-close-btn" id="close-edit-modal-btn" aria-label="Close dialog">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
               </div>
-            </form>
+              <form id="edit-patient-form" class="patient-form edit-modal-form" method="post" action="">
+                <input id="edit-patient-id" type="hidden" />
+                <div class="edit-form-field">
+                  <label for="edit-patient-name"><i class="fa-solid fa-user"></i> Full Name <span class="req">*</span></label>
+                  <input id="edit-patient-name" name="name" type="text" placeholder="Patient Full Name" required autocomplete="off" />
+                </div>
+                <div class="edit-form-field">
+                  <label for="edit-patient-philhealth-id"><i class="fa-solid fa-id-card"></i> PhilHealth ID</label>
+                  <input id="edit-patient-philhealth-id" name="philHealthId" type="text" placeholder="e.g. 12-345678901-2" autocomplete="off" />
+                </div>
+                <div class="edit-form-grid-2">
+                  <div class="edit-form-field">
+                    <label for="edit-patient-status"><i class="fa-solid fa-tag"></i> Priority</label>
+                    <select id="edit-patient-status" name="patientStatus" aria-label="Patient Status">
+                      <option value="regular">Regular</option>
+                      <option value="senior">Senior Citizen</option>
+                      <option value="pwd">PWD</option>
+                      <option value="emergency">Emergency</option>
+                    </select>
+                  </div>
+                  <div class="edit-form-field">
+                    <label for="edit-philhealth-status"><i class="fa-solid fa-shield-heart"></i> PhilHealth Status</label>
+                    <select id="edit-philhealth-status" name="philHealthStatus" aria-label="PhilHealth Status">
+                      <option value="no-philhealth">No PhilHealth</option>
+                      <option value="registered">Registered</option>
+                      <option value="not-registered">Not Registered</option>
+                      <option value="other-facility">Other Facility</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="edit-modal-actions">
+                  <button type="button" id="cancel-edit-btn" class="btn btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
+                  <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Save Changes</button>
+                </div>
+              </form>
+            </div>
           </div>
 
           <div id="edit-history-modal" class="card edit-modal" hidden>
@@ -837,6 +927,10 @@
     </div>
 
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
+<<<<<<< HEAD
     <script src="assets/app.js?v=5.7"></script>
+=======
+    <script src="assets/app.js?v=6.3"></script>
+>>>>>>> d288f73fdd342afec2e02d6eb0be5031c1d97278
   </body>
 </html>

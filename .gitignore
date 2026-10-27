@@ -35,3 +35,7 @@ data/
 
 # Devin (AI assistant)
 .devin/
+
+# Uploaded prescriptions
+public/uploads/prescriptions/
+uploads/prescriptions/
