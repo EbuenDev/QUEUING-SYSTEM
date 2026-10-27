@@ -106,30 +106,243 @@ function hideDoctorNotification() {
   doctorNotificationState.isNotificationVisible = false;
 }
 
-function checkForNewPatients() {
-  if (!isDoctorAuthenticated() || !doctorNotificationState.notificationElement) {
+// Admin notification state
+let adminNotificationState = {
+  initialized: false,
+  knownPatientIds: new Set(),
+  isNotificationVisible: false,
+  notificationElement: null,
+  messageElement: null,
+  soundElement: null,
+  autoHideTimeout: null
+};
+
+// Admin notification functions
+function initAdminNotification() {
+  const notification = document.getElementById('admin-notification');
+  const closeBtn = document.getElementById('admin-notification-close');
+  const messageElement = document.getElementById('admin-notification-message');
+
+  if (notification) {
+    adminNotificationState.notificationElement = notification;
+    adminNotificationState.messageElement = messageElement;
+
+    if (!adminNotificationState.soundElement) {
+      adminNotificationState.soundElement = new Audio('assets/sounds/sound-9.mp3');
+      adminNotificationState.soundElement.volume = 0.6;
+    }
+
+    // Initialize known patient IDs with current waiting patients so we don't alert on initial load
+    const currentWaiting = getWaitingPatients();
+    adminNotificationState.knownPatientIds = new Set(currentWaiting.map(p => String(p.id || p.queueNumber)));
+    adminNotificationState.initialized = true;
+
+    // Clicking notification jumps directly to Patient Queue page
+    notification.onclick = (e) => {
+      if (e.target.closest('#admin-notification-close')) return;
+      const queueNavBtn = document.querySelector('.admin-sidebar .nav-item[data-page="queue"]');
+      if (queueNavBtn) {
+        queueNavBtn.click();
+      }
+      hideAdminNotification();
+    };
+  }
+
+  if (closeBtn) {
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      hideAdminNotification();
+    };
+  }
+
+  enableAudioAutoplayOnInteraction();
+}
+
+function playAdminNotificationSound() {
+  try {
+    if (!adminNotificationState.soundElement) {
+      adminNotificationState.soundElement = new Audio('assets/sounds/sound-9.mp3');
+      adminNotificationState.soundElement.volume = 0.6;
+    }
+    adminNotificationState.soundElement.currentTime = 0;
+    const playPromise = adminNotificationState.soundElement.play();
+    if (playPromise !== undefined) {
+      playPromise.catch(error => {
+        console.warn('Unable to play notification sound via Audio element, attempting synthetic chime fallback:', error);
+        playSyntheticChime();
+      });
+    }
+  } catch (err) {
+    console.warn('Error playing admin notification sound:', err);
+    playSyntheticChime();
+  }
+}
+
+function playSyntheticChime() {
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+    const now = ctx.currentTime;
+    
+    const osc1 = ctx.createOscillator();
+    const gain1 = ctx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(659.25, now);
+    gain1.gain.setValueAtTime(0.3, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc1.connect(gain1);
+    gain1.connect(ctx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.3);
+
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880.00, now + 0.12);
+    gain2.gain.setValueAtTime(0.35, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.5);
+  } catch (e) {
+    console.warn('Synthetic chime failed', e);
+  }
+}
+
+function enableAudioAutoplayOnInteraction() {
+  const unlock = () => {
+    if (adminNotificationState.soundElement) {
+      adminNotificationState.soundElement.load();
+    }
+    window.removeEventListener('click', unlock);
+    window.removeEventListener('keydown', unlock);
+    window.removeEventListener('touchstart', unlock);
+  };
+  window.addEventListener('click', unlock, { once: true });
+  window.addEventListener('keydown', unlock, { once: true });
+  window.addEventListener('touchstart', unlock, { once: true });
+}
+
+function showAdminNotification(patientName, queueNumber) {
+  if (!adminNotificationState.notificationElement) {
     return;
   }
 
-  const currentPatientCount = state.patients.length;
-
-  // Check if new patients were added (count increased)
-  if (currentPatientCount > doctorNotificationState.previousPatientCount) {
-    const newPatientsCount = currentPatientCount - doctorNotificationState.previousPatientCount;
-
-    // Get the most recently added patient(s)
-    const newPatients = state.patients.slice(-newPatientsCount);
-
-    // Show notification for new patients (only if notification isn't already visible)
-    if (!doctorNotificationState.isNotificationVisible && newPatients.length > 0) {
-      // Show notification for the most recent patient
-      const latestPatient = newPatients[newPatients.length - 1];
-      showDoctorNotification(latestPatient.name, latestPatient.queueNumber);
-    }
+  const messageElement = adminNotificationState.messageElement || document.getElementById('admin-notification-message');
+  if (messageElement) {
+    messageElement.innerHTML = `<strong>Patient #${queueNumber}</strong> — ${escapeHtml(patientName)} has been added to the queue.`;
   }
 
-  // Update the previous count
-  doctorNotificationState.previousPatientCount = currentPatientCount;
+  adminNotificationState.notificationElement.classList.add('visible');
+  adminNotificationState.isNotificationVisible = true;
+
+  if (adminNotificationState.autoHideTimeout) {
+    clearTimeout(adminNotificationState.autoHideTimeout);
+  }
+
+  adminNotificationState.autoHideTimeout = setTimeout(() => {
+    hideAdminNotification();
+  }, 10000);
+}
+
+function hideAdminNotification() {
+  if (!adminNotificationState.notificationElement) {
+    return;
+  }
+
+  if (adminNotificationState.autoHideTimeout) {
+    clearTimeout(adminNotificationState.autoHideTimeout);
+    adminNotificationState.autoHideTimeout = null;
+  }
+
+  adminNotificationState.notificationElement.classList.remove('visible');
+  adminNotificationState.isNotificationVisible = false;
+}
+
+function updateAdminQueueBadge(hasNewPatient = false) {
+  const sidebarQueueBadge = document.getElementById('sidebar-queue-badge');
+  if (!sidebarQueueBadge) return;
+
+  const queueCount = getWaitingPatients().length;
+  sidebarQueueBadge.textContent = queueCount;
+  sidebarQueueBadge.hidden = queueCount <= 0;
+
+  if (hasNewPatient && queueCount > 0) {
+    sidebarQueueBadge.classList.remove('pulse');
+    void sidebarQueueBadge.offsetWidth;
+    sidebarQueueBadge.classList.add('pulse');
+  } else if (queueCount <= 0) {
+    sidebarQueueBadge.classList.remove('pulse');
+  }
+}
+
+function checkForAdminNewPatients() {
+  if (!isAdminAuthenticated() || !document.body.classList.contains('admin-body')) {
+    return;
+  }
+
+  if (!adminNotificationState.initialized) {
+    initAdminNotification();
+    updateAdminQueueBadge();
+    return;
+  }
+
+  const currentWaiting = getWaitingPatients();
+  const newPatients = currentWaiting.filter(p => !adminNotificationState.knownPatientIds.has(String(p.id || p.queueNumber)));
+
+  if (newPatients.length > 0) {
+    const latestPatient = newPatients[newPatients.length - 1];
+    showAdminNotification(latestPatient.name, latestPatient.queueNumber);
+    playAdminNotificationSound();
+
+    newPatients.forEach(p => {
+      adminNotificationState.knownPatientIds.add(String(p.id || p.queueNumber));
+    });
+
+    updateAdminQueueBadge(true);
+  } else {
+    updateAdminQueueBadge(false);
+  }
+
+  const currentActiveIds = new Set(state.patients.map(p => String(p.id || p.queueNumber)));
+  adminNotificationState.knownPatientIds = new Set(
+    [...adminNotificationState.knownPatientIds].filter(id => currentActiveIds.has(id))
+  );
+}
+
+function checkForNewPatients() {
+  // Doctor notification check
+  if (isDoctorAuthenticated() && doctorNotificationState.notificationElement) {
+    const currentPatientCount = state.patients.length;
+
+    // Check if new patients were added (count increased)
+    if (currentPatientCount > doctorNotificationState.previousPatientCount) {
+      const newPatientsCount = currentPatientCount - doctorNotificationState.previousPatientCount;
+
+      // Get the most recently added patient(s)
+      const newPatients = state.patients.slice(-newPatientsCount);
+
+      // Show notification for new patients (only if notification isn't already visible)
+      if (!doctorNotificationState.isNotificationVisible && newPatients.length > 0) {
+        // Show notification for the most recent patient
+        const latestPatient = newPatients[newPatients.length - 1];
+        showDoctorNotification(latestPatient.name, latestPatient.queueNumber);
+      }
+    }
+
+    // Update the previous count
+    doctorNotificationState.previousPatientCount = currentPatientCount;
+  }
+
+  // Admin notification check
+  if (isAdminAuthenticated() && document.body.classList.contains('admin-body')) {
+    checkForAdminNewPatients();
+  }
 }
 
 function isAdminAuthenticated() {
@@ -157,6 +370,10 @@ function setAdminAuthenticated(isAuthenticated) {
       sessionStorage.setItem('queue-admin-auth', 'true');
     } else {
       sessionStorage.removeItem('queue-admin-auth');
+      // Reset admin notification state on logout
+      adminNotificationState.initialized = false;
+      adminNotificationState.knownPatientIds.clear();
+      hideAdminNotification();
     }
   } catch (error) {
     console.warn('Unable to persist admin auth state', error);
@@ -228,6 +445,13 @@ function setAdminView(isAuthenticated) {
     } else {
       adminMain.classList.remove('centered');
     }
+  }
+
+  if (isAuthenticated) {
+    initAdminNotification();
+    updateAdminQueueBadge();
+  } else {
+    hideAdminNotification();
   }
 }
 
@@ -2579,6 +2803,9 @@ async function loadPlaylistLibrary() {
 }
 
 function initAdminPage() {
+  initAdminNotification();
+  updateAdminQueueBadge();
+
   const patientForm = document.getElementById('patient-form');
   const patientNameInput = document.getElementById('patient-name');
   const philHealthIdInput = document.getElementById('patient-philhealth-id');
@@ -4824,6 +5051,15 @@ function initAdminNavigation() {
         }
       });
 
+      // Clear badge pulse and hide notification if navigating to queue
+      if (targetPage === 'queue') {
+        const sidebarQueueBadge = document.getElementById('sidebar-queue-badge');
+        if (sidebarQueueBadge) {
+          sidebarQueueBadge.classList.remove('pulse');
+        }
+        hideAdminNotification();
+      }
+
       // Special handling when navigating to YAKAP Prescription tab
       if (targetPage === 'yakap-prescription') {
         if (document.getElementById('doctor-prescriptions-table-body')) {
@@ -4893,6 +5129,9 @@ function updateDashboardStats() {
   if (sidebarQueueBadge) {
     sidebarQueueBadge.textContent = queueCount;
     sidebarQueueBadge.hidden = queueCount <= 0;
+    if (queueCount <= 0) {
+      sidebarQueueBadge.classList.remove('pulse');
+    }
   }
   if (sidebarFollowupBadge) {
     sidebarFollowupBadge.textContent = followUpCount;

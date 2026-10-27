@@ -924,9 +924,16 @@
           </button>
         </div>
       </div>
+    <!-- Admin Notification Toast for New Patient Arrival -->
+    <div id="admin-notification" class="doctor-notification admin-notification" role="alert" aria-live="polite">
+      <div class="doctor-notification-content">
+        <h4 class="doctor-notification-title">🔔 New Patient Alert</h4>
+        <p class="doctor-notification-message" id="admin-notification-message">A new patient has been added to the queue.</p>
+      </div>
+      <button id="admin-notification-close" class="doctor-notification-close" type="button" aria-label="Close notification">&times;</button>
     </div>
 
     <footer class="site-credit">Developed by Mark Ian C. Ebuen</footer>
-    <script src="assets/app.js?v=6.4"></script>
+    <script src="assets/app.js?v=6.5"></script>
   </body>
 </html>

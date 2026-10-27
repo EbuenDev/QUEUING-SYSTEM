@@ -1207,6 +1207,20 @@ body {
   background: rgba(255, 255, 255, 0.3);
 }
 
+.admin-notification {
+  z-index: 9999;
+  cursor: pointer;
+}
+
+.admin-notification:hover {
+  filter: brightness(1.06);
+}
+
+.admin-notification-message strong {
+  color: #fef08a;
+  font-weight: 700;
+}
+
 @media (max-width: 760px) {
   .doctor-notification {
     bottom: 100px;
@@ -3265,9 +3279,24 @@ body.admin-body {
   display: none !important;
 }
 
+.sidebar-badge.pulse {
+  animation: badge-pulse-attention 0.85s ease-in-out infinite alternate !important;
+}
+
 @keyframes badge-pop {
   0% { transform: scale(0.6); opacity: 0; }
   100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes badge-pulse-attention {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.75);
+  }
+  100% {
+    transform: scale(1.18);
+    box-shadow: 0 0 0 7px rgba(239, 68, 68, 0);
+  }
 }
 
 /* Collapsed State for Nav Items */
@@ -3291,14 +3320,18 @@ body.admin-body {
 
 .admin-sidebar.collapsed .sidebar-badge {
   position: absolute;
-  top: 4px;
-  right: 6px;
-  min-width: 10px;
-  height: 10px;
-  padding: 0;
-  border-radius: 50%;
-  font-size: 0;
+  top: 2px;
+  right: 4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  font-size: 0.65rem;
+  font-weight: 700;
   border: 2px solid #0d2238;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* Floating Tooltips when Collapsed */
