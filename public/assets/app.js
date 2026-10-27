@@ -2025,7 +2025,7 @@ async function loadVideoConfigDisplay() {
         if (config.playlistId) {
           previewPlaceholder.style.display = 'none';
           previewFrame.hidden = false;
-          const embedUrl = buildYouTubeEmbedUrl(config.playlistId, { autoplay: 0, controls: 1 });
+          const embedUrl = buildYouTubeEmbedUrl(config.playlistId, { autoplay: 0, controls: 1, playlistUrl: config.playlistUrl });
           previewFrame.innerHTML = `<iframe id="admin-preview-iframe" src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
           previewBadge.textContent = config.isEnabled ? 'Live' : 'Preview Only';
           previewBadge.className = 'badge ' + (config.isEnabled ? 'serving' : 'waiting');
@@ -2054,6 +2054,10 @@ async function loadVideoConfigDisplay() {
         } else if (config.playlistId.includes(',')) {
           const parts = config.playlistId.split(',');
           detailId.textContent = `${parts.length} videos queued (${parts[0]} +${parts.length - 1} more)`;
+          detailId.title = config.playlistId;
+        } else if (config.playlistId.includes('?list=')) {
+          const [vid, lid] = config.playlistId.split('?list=');
+          detailId.textContent = `Mix / Playlist: ${lid} (Starting: ${vid})`;
           detailId.title = config.playlistId;
         } else {
           detailId.textContent = config.playlistId;
@@ -2399,15 +2403,20 @@ async function loadPlaylistLibrary() {
       }
 
       const isMulti = item.playlistId && item.playlistId.includes(',');
+      const isCombo = item.playlistId && item.playlistId.includes('?list=');
       const parts = isMulti ? item.playlistId.split(',').map(s => s.trim()).filter(Boolean) : [item.playlistId];
-      const firstVidId = parts[0] && !isYoutubePlaylistId(parts[0]) ? parts[0] : '';
+      const comboParts = isCombo ? item.playlistId.split('?list=') : [];
+      const firstVidId = isCombo ? comboParts[0] : (parts[0] && !isYoutubePlaylistId(parts[0]) ? parts[0] : '');
       const thumbHtml = firstVidId
         ? `<img src="https://img.youtube.com/vi/${encodeURIComponent(firstVidId)}/hqdefault.jpg" onerror="this.style.display='none'; this.parentElement.innerHTML='<i class=\\'fa-brands fa-youtube\\'></i>'" alt="thumbnail" />`
         : `<i class="fa-solid fa-list-ul"></i>`;
 
-      const displayId = isMulti
-        ? `${parts.length} videos queued (${parts[0]} +${parts.length - 1})`
-        : (item.playlistId || '—');
+      let displayId = item.playlistId || '—';
+      if (isMulti) {
+        displayId = `${parts.length} videos queued (${parts[0]} +${parts.length - 1})`;
+      } else if (isCombo) {
+        displayId = `Mix: ${comboParts[1]} (${comboParts[0]})`;
+      }
 
       return `
         <div class="playlist-library-item ${isPlaying ? 'now-playing' : ''}">
@@ -4186,30 +4195,94 @@ let youtubePlayer = null;
 let currentLoadedPlaylistId = null;
 let currentPlaylistEnabled = null;
 let pendingVideoPlay = false;
+let currentTrackList = [];
+let currentTrackIndex = 0;
 
 function isYoutubePlaylistId(id) {
   if (!id || typeof id !== 'string') return false;
   const clean = id.trim();
-  return /^(PL|UU|LL|FL|RD|OL|TL)[a-zA-Z0-9_-]+$/i.test(clean) || (clean.length > 20 && !clean.includes(','));
+  return /^(VL)?(PL|UU|LL|FL|RD|OL|TL)[a-zA-Z0-9_-]+$/i.test(clean) || (clean.length > 20 && !clean.includes(',') && !clean.includes('?'));
+}
+
+function parseMediaConfig(mediaId, mediaUrl = '') {
+  let videoId = '';
+  let listId = '';
+  let multiIds = [];
+
+  let text = (mediaId || '').trim();
+  const url = (mediaUrl || '').trim();
+
+  // Strip VL prefix if present (YouTube Music virtual list prefix)
+  if (text.startsWith('VLPL') || text.startsWith('VLOL') || text.startsWith('VLTL') || text.startsWith('VLRD')) {
+    text = text.substring(2);
+  }
+
+  // 1. Check for combo format: VIDEO_ID?list=PLAYLIST_ID or VIDEO_ID&list=PLAYLIST_ID
+  const comboMatch = text.match(/^([a-zA-Z0-9_-]{11})[?&]list=([a-zA-Z0-9_-]+)$/i);
+  if (comboMatch) {
+    videoId = comboMatch[1];
+    listId = comboMatch[2];
+  } else if (text.includes(',')) {
+    multiIds = text.split(',').map(s => s.trim()).filter(Boolean);
+    videoId = multiIds[0] || '';
+  } else if (isYoutubePlaylistId(text)) {
+    listId = text;
+    // If it's an RD mix like RDkffacxfA7G4, extract seed videoId if present
+    const rdMatch = text.match(/^RD(?:MM|AMVM)?([a-zA-Z0-9_-]{11})$/i);
+    if (rdMatch) {
+      videoId = rdMatch[1];
+    }
+  } else if (/^[a-zA-Z0-9_-]{11}$/.test(text)) {
+    videoId = text;
+  }
+
+  // 2. Fallback to URL if videoId or listId is missing
+  if (url) {
+    if (!videoId) {
+      const vMatch = url.match(/[?&]v=([a-zA-Z0-9_-]{11})/) ||
+                     url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/) ||
+                     url.match(/\/(?:live|shorts|embed)\/([a-zA-Z0-9_-]{11})/);
+      if (vMatch) videoId = vMatch[1];
+    }
+    if (!listId) {
+      const lMatch = url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+      if (lMatch) {
+        listId = lMatch[1].replace(/^VL(?=(PL|OL|TL|RD))/i, '');
+      }
+    }
+  }
+
+  // Strip VL from listId if still present
+  if (listId) {
+    listId = listId.replace(/^VL(?=(PL|OL|TL|RD))/i, '');
+  }
+
+  return { videoId, listId, multiIds };
 }
 
 function buildYouTubeEmbedUrl(mediaId, options = {}) {
-  const origin = window.location.origin || '';
+  const mediaUrl = options.playlistUrl || (state.videoConfig && state.videoConfig.playlistUrl) || '';
+  const parsed = parseMediaConfig(mediaId, mediaUrl);
   const autoplay = options.autoplay ? 1 : 0;
   const controls = options.controls !== undefined ? options.controls : 1;
-  const cleanId = (mediaId || '').trim();
+  const origin = (window.location.origin && window.location.origin !== 'null' && window.location.protocol.startsWith('http'))
+    ? window.location.origin
+    : '';
 
-  if (!cleanId) return '';
+  const originParam = origin ? `&origin=${encodeURIComponent(origin)}` : '';
+  const baseParams = `autoplay=${autoplay}&controls=${controls}&rel=0&modestbranding=1&enablejsapi=1${originParam}`;
 
-  if (cleanId.includes(',')) {
-    const ids = cleanId.split(',').map(s => s.trim()).filter(Boolean);
-    const firstId = ids[0] || '';
-    return `https://www.youtube.com/embed/${encodeURIComponent(firstId)}?playlist=${encodeURIComponent(ids.join(','))}&autoplay=${autoplay}&controls=${controls}&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(origin)}`;
-  } else if (isYoutubePlaylistId(cleanId)) {
-    return `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(cleanId)}&autoplay=${autoplay}&controls=${controls}&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(origin)}`;
-  } else {
-    return `https://www.youtube.com/embed/${encodeURIComponent(cleanId)}?playlist=${encodeURIComponent(cleanId)}&loop=1&autoplay=${autoplay}&controls=${controls}&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(origin)}`;
+  if (parsed.videoId && parsed.listId) {
+    return `https://www.youtube.com/embed/${encodeURIComponent(parsed.videoId)}?list=${encodeURIComponent(parsed.listId)}&${baseParams}`;
+  } else if (parsed.multiIds.length > 0) {
+    const firstId = parsed.multiIds[0] || '';
+    return `https://www.youtube.com/embed/${encodeURIComponent(firstId)}?playlist=${encodeURIComponent(parsed.multiIds.join(','))}&${baseParams}`;
+  } else if (parsed.listId) {
+    return `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(parsed.listId)}&${baseParams}`;
+  } else if (parsed.videoId) {
+    return `https://www.youtube.com/embed/${encodeURIComponent(parsed.videoId)}?playlist=${encodeURIComponent(parsed.videoId)}&loop=1&${baseParams}`;
   }
+  return '';
 }
 
 function postToPlayerIframe(func, args = []) {
@@ -4324,7 +4397,23 @@ function forceAutoplay(player) {
 
 function advancePlaylistNext() {
   let handled = false;
-  if (youtubePlayer) {
+
+  // 1. If custom list of video IDs is queued:
+  if (currentTrackList && currentTrackList.length > 1) {
+    currentTrackIndex = (currentTrackIndex + 1) % currentTrackList.length;
+    const nextVideoId = currentTrackList[currentTrackIndex];
+    if (youtubePlayer && typeof youtubePlayer.loadVideoById === 'function') {
+      try {
+        youtubePlayer.loadVideoById(nextVideoId);
+        handled = true;
+      } catch (e) {
+        console.warn('loadVideoById error:', e);
+      }
+    }
+  }
+
+  // 2. Native YouTube playlist or mix
+  if (!handled && youtubePlayer) {
     try {
       if (typeof youtubePlayer.nextVideo === 'function') {
         youtubePlayer.nextVideo();
@@ -4354,7 +4443,23 @@ function advancePlaylistNext() {
 
 function advancePlaylistPrev() {
   let handled = false;
-  if (youtubePlayer) {
+
+  // 1. If custom list of video IDs is queued:
+  if (currentTrackList && currentTrackList.length > 1) {
+    currentTrackIndex = (currentTrackIndex > 0) ? (currentTrackIndex - 1) : (currentTrackList.length - 1);
+    const prevVideoId = currentTrackList[currentTrackIndex];
+    if (youtubePlayer && typeof youtubePlayer.loadVideoById === 'function') {
+      try {
+        youtubePlayer.loadVideoById(prevVideoId);
+        handled = true;
+      } catch (e) {
+        console.warn('loadVideoById error:', e);
+      }
+    }
+  }
+
+  // 2. Native YouTube playlist or mix
+  if (!handled && youtubePlayer) {
     try {
       if (typeof youtubePlayer.previousVideo === 'function') {
         youtubePlayer.previousVideo();
@@ -4539,8 +4644,7 @@ function initYouTubePlayer(forcePlay = false) {
   playerDiv.style.display = '';
 
   const cleanId = (videoConfig.playlistId || '').trim();
-  const isPlaylist = isYoutubePlaylistId(cleanId);
-  const isMulti = cleanId.includes(',');
+  const parsed = parseMediaConfig(cleanId, videoConfig.playlistUrl || '');
   const isPaused = Boolean(videoConfig.isPaused);
 
   let playerConfig = {
@@ -4553,8 +4657,7 @@ function initYouTubePlayer(forcePlay = false) {
       'loop': 1,
       'modestbranding': 1,
       'playsinline': 1,
-      'enablejsapi': 1,
-      'origin': window.location.origin
+      'enablejsapi': 1
     },
     events: {
       'onReady': (event) => {
@@ -4580,16 +4683,32 @@ function initYouTubePlayer(forcePlay = false) {
     }
   };
 
-  if (isPlaylist) {
-    playerConfig.playerVars.list = cleanId;
+  if (window.location.origin && window.location.origin !== 'null' && window.location.protocol.startsWith('http')) {
+    playerConfig.playerVars.origin = window.location.origin;
+  }
+
+  if (parsed.videoId && parsed.listId) {
+    // Both video ID and playlist/mix ID -> Starts on seed video and loads the mix/playlist queue
+    playerConfig.videoId = parsed.videoId;
+    playerConfig.playerVars.list = parsed.listId;
     playerConfig.playerVars.listType = 'playlist';
-  } else if (isMulti) {
-    const ids = cleanId.split(',').map(s => s.trim()).filter(Boolean);
-    playerConfig.videoId = ids[0];
-    playerConfig.playerVars.playlist = ids.join(',');
-  } else {
-    playerConfig.videoId = cleanId;
-    playerConfig.playerVars.playlist = cleanId;
+    currentTrackList = [];
+    currentTrackIndex = 0;
+  } else if (parsed.multiIds.length > 0) {
+    playerConfig.videoId = parsed.multiIds[0];
+    playerConfig.playerVars.playlist = parsed.multiIds.join(',');
+    currentTrackList = parsed.multiIds;
+    currentTrackIndex = 0;
+  } else if (parsed.listId) {
+    playerConfig.playerVars.list = parsed.listId;
+    playerConfig.playerVars.listType = 'playlist';
+    currentTrackList = [];
+    currentTrackIndex = 0;
+  } else if (parsed.videoId) {
+    playerConfig.videoId = parsed.videoId;
+    playerConfig.playerVars.playlist = parsed.videoId;
+    currentTrackList = [parsed.videoId];
+    currentTrackIndex = 0;
   }
 
   // Create new player with autoplay, loop, and API enabled
@@ -4620,9 +4739,19 @@ function onPlayerError(event) {
 
   // Auto-recovery: if a video in a playlist encounters an error (e.g. 100, 101, 150, 153),
   // automatically advance to the next video in the playlist
-  if (consecutiveVideoErrors < 10) {
-    console.log('Skipping unplayable video to next video in playlist...');
-    advancePlaylistNext();
+  if (consecutiveVideoErrors < 25) {
+    console.log(`Unplayable track encountered (Error ${event.data}). Auto-skipping to next track in playlist...`);
+    setTimeout(() => {
+      advancePlaylistNext();
+      setTimeout(() => {
+        try {
+          if (youtubePlayer && typeof youtubePlayer.playVideo === 'function') {
+            youtubePlayer.playVideo();
+          }
+        } catch (e) {}
+        postToPlayerIframe('playVideo');
+      }, 300);
+    }, 250);
     return;
   }
 
