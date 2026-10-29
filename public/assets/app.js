@@ -1597,7 +1597,13 @@ function printConsultationHistory() {
   }, 250);
 }
 
+let isDraggingQueueRow = false;
+let draggedRowElement = null;
+
 function renderAdminQueue() {
+  if (isDraggingQueueRow) {
+    return;
+  }
   const patientList = document.getElementById('patient-list');
   const adminCount = document.getElementById('admin-count');
   const adminPatientCount = document.getElementById('admin-patient-count');
@@ -1728,12 +1734,12 @@ function renderAdminQueue() {
     : state.patients;
 
   if (state.patients.length === 0) {
-    patientList.innerHTML = '<tr><td colspan="5" class="mockup-table-empty">No patients have been added to the queue yet.</td></tr>';
+    patientList.innerHTML = '<tr><td colspan="6" class="mockup-table-empty">No patients have been added to the queue yet.</td></tr>';
     return;
   }
 
   if (patientsToRender.length === 0) {
-    patientList.innerHTML = '<tr><td colspan="5" class="mockup-table-empty">No matching patients found in queue.</td></tr>';
+    patientList.innerHTML = '<tr><td colspan="6" class="mockup-table-empty">No matching patients found in queue.</td></tr>';
     return;
   }
 
@@ -1742,15 +1748,30 @@ function renderAdminQueue() {
       (patient) => {
         const patientType = patient.patientStatus || patient.type || 'regular';
         const isCurrentPatient = patient.status === 'serving';
+        const isWaiting = patient.status === 'waiting';
+        const firstWaitingId = patientsToRender.find((p) => p.status === 'waiting')?.id;
+        const isFirstWaiting = isWaiting && patient.id === firstWaitingId;
 
         return `
-          <tr class="mockup-table-row" data-id="${patient.id}">
-            <td class="col-qnum">#${patient.queueNumber}</td>
-            <td class="col-name">${escapeHtml(patient.name)}</td>
+          <tr class="mockup-table-row draggable-row" data-id="${patient.id}" draggable="true" title="Drag and drop to prioritize urgent consultation">
+            <td class="col-drag" title="Drag to prioritize">
+              <span class="drag-handle"><i class="fa-solid fa-grip-vertical"></i></span>
+            </td>
+            <td class="col-qnum">
+              #${patient.queueNumber}
+              ${isFirstWaiting ? '<span class="urgent-next-tag" title="Next in line for doctor"><i class="fa-solid fa-bolt"></i> Next</span>' : ''}
+            </td>
+            <td class="col-name">
+              <div class="patient-name-wrap">
+                <span class="patient-name-main">${escapeHtml(patient.name)}</span>
+                ${patient.philHealthId ? `<small class="patient-ph-sub">PH: ${escapeHtml(patient.philHealthId)}</small>` : ''}
+              </div>
+            </td>
             <td class="col-priority"><span class="mockup-badge badge-priority type-${patientType}">${patientTypeLabel(patientType)}</span></td>
             <td class="col-status"><span class="mockup-badge badge-status-${patient.status}"><i class="fa-regular fa-clock"></i> ${patient.status === 'waiting' ? 'Waiting' : patient.status}</span></td>
             <td class="col-action">
               <div class="mockup-table-actions">
+                ${isWaiting && !isFirstWaiting ? `<button class="mockup-tbl-btn btn-tbl-prioritize" data-action="prioritize" data-id="${patient.id}" title="Prioritize / Move to Top for Urgent Consultation"><i class="fa-solid fa-angles-up"></i></button>` : ''}
                 <button class="mockup-tbl-btn btn-tbl-edit" data-action="edit" data-id="${patient.id}" title="Edit Patient Details"><i class="fa-solid fa-pen-to-square"></i></button>
                 <button class="mockup-tbl-btn btn-tbl-serve" data-action="${isCurrentPatient ? 'finish' : 'serve'}" data-id="${patient.id}" title="${isCurrentPatient ? 'Done' : 'Serve'}">${isCurrentPatient ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-play"></i>'}</button>
                 <button class="mockup-tbl-btn btn-tbl-skip" data-action="skip" data-id="${patient.id}" title="Skip"><i class="fa-solid fa-angles-right"></i></button>
@@ -1762,6 +1783,148 @@ function renderAdminQueue() {
       },
     )
     .join('');
+
+  initQueueDragAndDrop();
+}
+
+function showAdminToast(message, type = 'success') {
+  let container = document.querySelector('.admin-toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.className = 'admin-toast-container';
+    document.body.appendChild(container);
+  }
+
+  const iconMap = {
+    success: 'fa-circle-check',
+    warning: 'fa-triangle-exclamation',
+    error: 'fa-circle-xmark',
+    info: 'fa-circle-info',
+  };
+
+  const toast = document.createElement('div');
+  toast.className = `admin-toast ${type}`;
+  toast.innerHTML = `
+    <i class="fa-solid ${iconMap[type] || 'fa-circle-info'}"></i>
+    <span>${escapeHtml(message)}</span>
+  `;
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.classList.add('fade-out');
+    setTimeout(() => {
+      toast.remove();
+    }, 250);
+  }, 2800);
+}
+
+function prioritizePatient(id) {
+  const patient = state.patients.find((p) => p.id === id);
+  if (!patient) return;
+
+  postAction('prioritize-patient', { id })
+    .then(() => {
+      showAdminToast(`Patient #${patient.queueNumber} (${patient.name}) prioritized for urgent consultation!`, 'success');
+    })
+    .catch((err) => {
+      console.error('Failed to prioritize patient:', err);
+      showAdminToast('Failed to prioritize patient.', 'error');
+    });
+}
+
+function initQueueDragAndDrop() {
+  const patientList = document.getElementById('patient-list');
+  if (!patientList) return;
+
+  const rows = patientList.querySelectorAll('.draggable-row');
+  if (rows.length === 0) return;
+
+  rows.forEach((row) => {
+    row.addEventListener('dragstart', (e) => {
+      if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
+        e.preventDefault();
+        return;
+      }
+
+      isDraggingQueueRow = true;
+      draggedRowElement = row;
+      row.classList.add('is-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', row.dataset.id || '');
+    });
+
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+
+      if (!draggedRowElement || draggedRowElement === row) return;
+
+      const rect = row.getBoundingClientRect();
+      const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+
+      patientList.insertBefore(draggedRowElement, next ? row.nextSibling : row);
+    });
+
+    row.addEventListener('dragend', () => {
+      row.classList.remove('is-dragging');
+      isDraggingQueueRow = false;
+      draggedRowElement = null;
+
+      patientList.querySelectorAll('.draggable-row').forEach((r) => {
+        r.classList.remove('is-dragging', 'drag-over-top', 'drag-over-bottom');
+      });
+
+      handleQueueReordered();
+    });
+  });
+}
+
+function handleQueueReordered() {
+  const patientList = document.getElementById('patient-list');
+  if (!patientList) return;
+
+  const rows = Array.from(patientList.querySelectorAll('.draggable-row'));
+  const newIds = rows.map((r) => r.dataset.id).filter(Boolean);
+
+  if (newIds.length === 0) return;
+
+  const currentIds = state.patients.map((p) => p.id);
+  const isChanged = newIds.some((id, idx) => id !== currentIds[idx]);
+
+  if (!isChanged) return;
+
+  const searchFilter = document.getElementById('queue-search-filter')?.value?.trim();
+  if (searchFilter) {
+    showAdminToast('Clear search filter before reordering queue.', 'warning');
+    renderAdminQueue();
+    return;
+  }
+
+  // Update local state immediately for instant responsive UX
+  const idMap = new Map(state.patients.map((p) => [p.id, p]));
+  const reordered = [];
+  newIds.forEach((id) => {
+    if (idMap.has(id)) {
+      reordered.push(idMap.get(id));
+      idMap.delete(id);
+    }
+  });
+  for (const remaining of idMap.values()) {
+    reordered.push(remaining);
+  }
+  state.patients = reordered;
+
+  render();
+
+  postAction('reorder-queue', { patientIds: newIds })
+    .then(() => {
+      showAdminToast('Queue order updated - Urgent patient prioritized!', 'success');
+    })
+    .catch((err) => {
+      console.error('Failed to save reordered queue:', err);
+      showAdminToast('Failed to save queue order to server.', 'error');
+      fetchState();
+    });
 }
 
 function renderDoctorQueue() {
@@ -3033,6 +3196,8 @@ function initAdminPage() {
           editPatientNameInput.select();
         }, 50);
       }
+    } else if (action === 'prioritize') {
+      prioritizePatient(id);
     } else if (action === 'edit-history') {
       openHistoryEditModal(id);
     } else if (action === 'delete') {

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS patients (
     phil_health_status VARCHAR(30) NOT NULL DEFAULT 'no-philhealth',
     follow_up_status VARCHAR(20) NOT NULL DEFAULT 'none',
     follow_up_reason VARCHAR(50),
+    priority_order INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -47,6 +48,7 @@ ON CONFLICT (id) DO NOTHING;
 CREATE INDEX IF NOT EXISTS idx_patients_status ON patients(status);
 CREATE INDEX IF NOT EXISTS idx_patients_queue_number ON patients(queue_number);
 CREATE INDEX IF NOT EXISTS idx_patients_created_at ON patients(created_at);
+CREATE INDEX IF NOT EXISTS idx_patients_priority_order ON patients(priority_order);
 CREATE INDEX IF NOT EXISTS idx_consultation_history_finished_at ON consultation_history(finished_at);
 CREATE INDEX IF NOT EXISTS idx_consultation_history_queue_number ON consultation_history(queue_number);
 

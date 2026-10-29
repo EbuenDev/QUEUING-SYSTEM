@@ -8038,3 +8038,191 @@ iframe.youtube-player,
 
 
 
+
+
+/* ==========================================================================
+   DRAG AND DROP QUEUE PRIORITIZATION (ADMIN PATIENT LIST)
+   ========================================================================== */
+.mockup-queue-table .th-drag {
+  width: 38px !important;
+  text-align: center !important;
+  padding: 12px 6px !important;
+  color: #64748b !important;
+}
+
+.mockup-queue-table .col-drag {
+  width: 38px !important;
+  text-align: center !important;
+  padding: 10px 6px !important;
+  color: #94a3b8 !important;
+  vertical-align: middle !important;
+}
+
+.drag-handle {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 4px !important;
+  cursor: grab !important;
+  color: #94a3b8 !important;
+  transition: all 0.15s ease !important;
+}
+
+.drag-handle:hover,
+.mockup-table-row:hover .drag-handle {
+  color: #2563eb !important;
+  background: #eff6ff !important;
+}
+
+.drag-handle:active {
+  cursor: grabbing !important;
+}
+
+.mockup-table-row.draggable-row {
+  cursor: grab;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.mockup-table-row.draggable-row:active {
+  cursor: grabbing;
+}
+
+.mockup-table-row.draggable-row.is-dragging {
+  opacity: 0.35 !important;
+  background: #e0e7ff !important;
+  outline: 2px dashed #3b82f6 !important;
+  cursor: grabbing !important;
+}
+
+.mockup-table-row.drag-over-top td {
+  border-top: 3px solid #2563eb !important;
+}
+
+.mockup-table-row.drag-over-bottom td {
+  border-bottom: 3px solid #2563eb !important;
+}
+
+.priority-badge-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #0284c7;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  margin-left: 10px;
+  user-select: none;
+}
+
+.urgent-next-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #b91c1c;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  animation: pulse-urgent 2s infinite ease-in-out;
+}
+
+@keyframes pulse-urgent {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(0.97); }
+}
+
+.btn-tbl-prioritize {
+  background: #fffbeb !important;
+  color: #d97706 !important;
+  border-color: #fde68a !important;
+}
+
+.btn-tbl-prioritize:hover {
+  background: #d97706 !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+
+.patient-name-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.patient-name-main {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.patient-ph-sub {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.admin-toast-container {
+  position: fixed;
+  top: 75px;
+  right: 24px;
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.admin-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2);
+  animation: toast-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: all 0.25s ease;
+  border-left: 4px solid #3b82f6;
+  max-width: 380px;
+}
+
+.admin-toast.success {
+  border-left-color: #22c55e;
+}
+
+.admin-toast.warning {
+  border-left-color: #f59e0b;
+}
+
+.admin-toast.error {
+  border-left-color: #ef4444;
+}
+
+@keyframes toast-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.admin-toast.fade-out {
+  opacity: 0;
+  transform: translateX(20px);
+}

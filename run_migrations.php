@@ -67,6 +67,7 @@ $migrationFiles = [
     '06-playlist_library'  => __DIR__ . '/backend/migration_playlist_library.sql',
     '07-add_messages'      => __DIR__ . '/backend/migration_add_messages.sql',
     '08-prescriptions'     => __DIR__ . '/backend/migration_prescriptions.sql',
+    '09-patient_priority'  => __DIR__ . '/backend/migration_patient_priority.sql',
 ];
 
 $totalExecuted = 0;

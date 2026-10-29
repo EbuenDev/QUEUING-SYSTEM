@@ -41,6 +41,7 @@ services:
       - ./backend/migration_playlist_library.sql:/docker-entrypoint-initdb.d/06-migration.sql
       - ./backend/migration_add_messages.sql:/docker-entrypoint-initdb.d/07-migration.sql
       - ./backend/migration_prescriptions.sql:/docker-entrypoint-initdb.d/08-migration.sql
+      - ./backend/migration_patient_priority.sql:/docker-entrypoint-initdb.d/09-migration.sql
     networks:
       - rhu-network
     healthcheck:

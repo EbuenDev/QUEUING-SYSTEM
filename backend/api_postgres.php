@@ -113,18 +113,59 @@ function getDefaultState(): array {
     ];
 }
 
+function hasPatientPriorityColumn(?PDO $db): bool {
+    static $hasColumn = null;
+    if ($hasColumn !== null) {
+        return $hasColumn;
+    }
+    if ($db === null) {
+        return false;
+    }
+    try {
+        $db->exec("ALTER TABLE patients ADD COLUMN IF NOT EXISTS priority_order INTEGER DEFAULT 0");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_patients_priority_order ON patients(priority_order)");
+        $hasColumn = true;
+        return true;
+    } catch (Throwable $e) {
+        error_log('Notice ensuring priority_order column: ' . $e->getMessage());
+    }
+
+    try {
+        $stmt = $db->query("SELECT 1 FROM information_schema.columns WHERE table_name = 'patients' AND column_name = 'priority_order'");
+        $hasColumn = (bool)($stmt && $stmt->fetchColumn());
+        return $hasColumn;
+    } catch (Throwable $e) {
+        $hasColumn = false;
+        return false;
+    }
+}
+
 function loadStateFromDatabase(?PDO $db): array {
     try {
         if ($db === null) {
             return getDefaultState();
         }
 
-        // Load patients
-        $stmt = $db->prepare("SELECT id, name, phil_health_id as philHealthId, queue_number as queueNumber, 
-                                    status, patient_status as patientStatus, patient_status as type, 
-                                    phil_health_status as philHealthStatus, follow_up_status as followUpStatus, 
-                                    follow_up_reason as followUpReason
-                             FROM patients ORDER BY queue_number ASC");
+        $hasPriority = hasPatientPriorityColumn($db);
+
+        // Load patients ordered by custom priority order if available, falling back to queue number
+        if ($hasPriority) {
+            $stmt = $db->prepare("SELECT id, name, phil_health_id as philHealthId, queue_number as queueNumber, 
+                                        status, patient_status as patientStatus, patient_status as type, 
+                                        phil_health_status as philHealthStatus, follow_up_status as followUpStatus, 
+                                        follow_up_reason as followUpReason,
+                                        COALESCE(priority_order, 0) as priorityOrder
+                                 FROM patients 
+                                 ORDER BY CASE WHEN priority_order IS NULL OR priority_order = 0 THEN queue_number ELSE priority_order END ASC, queue_number ASC");
+        } else {
+            $stmt = $db->prepare("SELECT id, name, phil_health_id as philHealthId, queue_number as queueNumber, 
+                                        status, patient_status as patientStatus, patient_status as type, 
+                                        phil_health_status as philHealthStatus, follow_up_status as followUpStatus, 
+                                        follow_up_reason as followUpReason,
+                                        queue_number as priorityOrder
+                                 FROM patients 
+                                 ORDER BY queue_number ASC");
+        }
         $stmt->execute();
         $patients = $stmt->fetchAll();
         
@@ -141,6 +182,7 @@ function loadStateFromDatabase(?PDO $db): array {
                 'philHealthStatus' => $patient['philhealthstatus'],
                 'followUpStatus' => $patient['followupstatus'] ?? 'none',
                 'followUpReason' => $patient['followupreason'] ?? '',
+                'priorityOrder' => (int)($patient['priorityorder'] ?? $patient['queuenumber']),
             ];
         }, $patients);
         
@@ -196,35 +238,69 @@ function savePatientToDatabase(?PDO $db, array $patient): void {
             return;
         }
 
-        $stmt = $db->prepare("INSERT INTO patients (id, name, phil_health_id, queue_number, status, patient_status, phil_health_status, follow_up_status, follow_up_reason)
-                             VALUES (:id, :name, :philHealthId, :queueNumber, :status, :patientStatus, :philHealthStatus, :followUpStatus, :followUpReason)
-                             ON CONFLICT (id) DO UPDATE
-                             SET name = EXCLUDED.name,
-                                 phil_health_id = EXCLUDED.phil_health_id,
-                                 queue_number = EXCLUDED.queue_number,
-                                 status = EXCLUDED.status,
-                                 patient_status = EXCLUDED.patient_status,
-                                 phil_health_status = EXCLUDED.phil_health_status,
-                                 follow_up_status = EXCLUDED.follow_up_status,
-                                 follow_up_reason = EXCLUDED.follow_up_reason");
+        $hasPriority = hasPatientPriorityColumn($db);
 
-        $stmt->execute([
-            ':id' => $patient['id'],
-            ':name' => $patient['name'],
-            ':philHealthId' => $patient['philHealthId'],
-            ':queueNumber' => $patient['queueNumber'],
-            ':status' => $patient['status'],
-            ':patientStatus' => $patient['patientStatus'],
-            ':philHealthStatus' => $patient['philHealthStatus'],
-            ':followUpStatus' => $patient['followUpStatus'] ?? 'none',
-            ':followUpReason' => $patient['followUpReason'] ?? '',
-        ]);
+        if ($hasPriority) {
+            $priorityOrder = isset($patient['priorityOrder']) ? (int)$patient['priorityOrder'] : (int)($patient['queueNumber'] ?? 0);
+
+            $stmt = $db->prepare("INSERT INTO patients (id, name, phil_health_id, queue_number, status, patient_status, phil_health_status, follow_up_status, follow_up_reason, priority_order)
+                                 VALUES (:id, :name, :philHealthId, :queueNumber, :status, :patientStatus, :philHealthStatus, :followUpStatus, :followUpReason, :priorityOrder)
+                                 ON CONFLICT (id) DO UPDATE
+                                 SET name = EXCLUDED.name,
+                                     phil_health_id = EXCLUDED.phil_health_id,
+                                     queue_number = EXCLUDED.queue_number,
+                                     status = EXCLUDED.status,
+                                     patient_status = EXCLUDED.patient_status,
+                                     phil_health_status = EXCLUDED.phil_health_status,
+                                     follow_up_status = EXCLUDED.follow_up_status,
+                                     follow_up_reason = EXCLUDED.follow_up_reason,
+                                     priority_order = CASE 
+                                         WHEN EXCLUDED.priority_order IS NOT NULL AND EXCLUDED.priority_order > 0 THEN EXCLUDED.priority_order 
+                                         ELSE patients.priority_order 
+                                     END");
+
+            $stmt->execute([
+                ':id' => $patient['id'],
+                ':name' => $patient['name'],
+                ':philHealthId' => $patient['philHealthId'],
+                ':queueNumber' => $patient['queueNumber'],
+                ':status' => $patient['status'],
+                ':patientStatus' => $patient['patientStatus'],
+                ':philHealthStatus' => $patient['philHealthStatus'],
+                ':followUpStatus' => $patient['followUpStatus'] ?? 'none',
+                ':followUpReason' => $patient['followUpReason'] ?? '',
+                ':priorityOrder' => $priorityOrder,
+            ]);
+        } else {
+            $stmt = $db->prepare("INSERT INTO patients (id, name, phil_health_id, queue_number, status, patient_status, phil_health_status, follow_up_status, follow_up_reason)
+                                 VALUES (:id, :name, :philHealthId, :queueNumber, :status, :patientStatus, :philHealthStatus, :followUpStatus, :followUpReason)
+                                 ON CONFLICT (id) DO UPDATE
+                                 SET name = EXCLUDED.name,
+                                     phil_health_id = EXCLUDED.phil_health_id,
+                                     queue_number = EXCLUDED.queue_number,
+                                     status = EXCLUDED.status,
+                                     patient_status = EXCLUDED.patient_status,
+                                     phil_health_status = EXCLUDED.phil_health_status,
+                                     follow_up_status = EXCLUDED.follow_up_status,
+                                     follow_up_reason = EXCLUDED.follow_up_reason");
+
+            $stmt->execute([
+                ':id' => $patient['id'],
+                ':name' => $patient['name'],
+                ':philHealthId' => $patient['philHealthId'],
+                ':queueNumber' => $patient['queueNumber'],
+                ':status' => $patient['status'],
+                ':patientStatus' => $patient['patientStatus'],
+                ':philHealthStatus' => $patient['philHealthStatus'],
+                ':followUpStatus' => $patient['followUpStatus'] ?? 'none',
+                ':followUpReason' => $patient['followUpReason'] ?? '',
+            ]);
+        }
     } catch (PDOException $e) {
         error_log('Error saving patient to database: ' . $e->getMessage());
         throw $e;
     }
 }
-
 function deletePatientFromDatabase(?PDO $db, string $id): void {
     try {
         if ($db === null) {
@@ -1435,6 +1511,17 @@ try {
                 $philHealthStatus = 'no-philhealth';
             }
 
+            $newPriority = (int)$state['nextQueueNumber'];
+            if ($db !== null && hasPatientPriorityColumn($db)) {
+                try {
+                    $maxPriorityStmt = $db->query("SELECT COALESCE(MAX(CASE WHEN priority_order > 0 THEN priority_order ELSE queue_number END), 0) FROM patients");
+                    $maxPriority = $maxPriorityStmt ? (int)$maxPriorityStmt->fetchColumn() : 0;
+                    $newPriority = max($maxPriority + 1, (int)$state['nextQueueNumber']);
+                } catch (Throwable $e) {
+                    $newPriority = (int)$state['nextQueueNumber'];
+                }
+            }
+
             $newPatient = [
                 'id' => bin2hex(random_bytes(8)),
                 'name' => $name,
@@ -1444,6 +1531,7 @@ try {
                 'patientStatus' => $type,
                 'type' => $type,
                 'philHealthStatus' => $philHealthStatus,
+                'priorityOrder' => $newPriority,
             ];
 
             error_log('Saving patient to database');
@@ -1837,6 +1925,95 @@ try {
 
             $state = loadStateFromDatabase($db);
             jsonResponse(['success' => true, 'state' => $state]);
+            break;
+
+        case 'reorder-queue':
+            if (!isAdminAuthenticated()) {
+                jsonResponse(['success' => false, 'message' => 'Unauthorized. Admin privileges required.'], 401);
+                exit;
+            }
+
+            $patientIds = $payload['patientIds'] ?? [];
+            if (!is_array($patientIds) || empty($patientIds)) {
+                jsonResponse(['success' => false, 'message' => 'No patient IDs provided for reordering'], 400);
+                exit;
+            }
+
+            hasPatientPriorityColumn($db);
+
+            try {
+                $db->beginTransaction();
+                $updateStmt = $db->prepare("UPDATE patients SET priority_order = :prio WHERE id = :id");
+                foreach ($patientIds as $index => $patientId) {
+                    $updateStmt->execute([
+                        ':prio' => $index + 1,
+                        ':id' => (string)$patientId
+                    ]);
+                }
+                $db->commit();
+            } catch (Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log('Error reordering queue: ' . $e->getMessage());
+                jsonResponse(['success' => false, 'message' => 'Failed to save reordered queue'], 500);
+                exit;
+            }
+
+            $state = loadStateFromDatabase($db);
+            jsonResponse(['success' => true, 'state' => $state, 'message' => 'Queue reordered successfully']);
+            break;
+
+        case 'prioritize-patient':
+            if (!isAdminAuthenticated()) {
+                jsonResponse(['success' => false, 'message' => 'Unauthorized. Admin privileges required.'], 401);
+                exit;
+            }
+
+            $id = (string)($payload['id'] ?? '');
+            if ($id === '') {
+                jsonResponse(['success' => false, 'message' => 'Patient ID is required'], 400);
+                exit;
+            }
+
+            hasPatientPriorityColumn($db);
+
+            try {
+                $db->beginTransaction();
+                // Find all active waiting patients ordered by current priority
+                $stmt = $db->prepare("SELECT id FROM patients 
+                                     WHERE status = 'waiting' 
+                                     ORDER BY CASE WHEN priority_order IS NULL OR priority_order = 0 THEN queue_number ELSE priority_order END ASC, queue_number ASC");
+                $stmt->execute();
+                $waitingIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+                // Move the requested id to index 0 (top priority)
+                $newOrderedIds = [$id];
+                foreach ($waitingIds as $wId) {
+                    if ($wId !== $id) {
+                        $newOrderedIds[] = $wId;
+                    }
+                }
+
+                $updateStmt = $db->prepare("UPDATE patients SET priority_order = :prio WHERE id = :id");
+                foreach ($newOrderedIds as $idx => $pid) {
+                    $updateStmt->execute([
+                        ':prio' => $idx + 1,
+                        ':id' => $pid
+                    ]);
+                }
+                $db->commit();
+            } catch (Exception $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log('Error prioritizing patient: ' . $e->getMessage());
+                jsonResponse(['success' => false, 'message' => 'Failed to prioritize patient'], 500);
+                exit;
+            }
+
+            $state = loadStateFromDatabase($db);
+            jsonResponse(['success' => true, 'state' => $state, 'message' => 'Patient prioritized for urgent consultation']);
             break;
 
         // User management endpoints (super admin only)

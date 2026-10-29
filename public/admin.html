@@ -393,6 +393,7 @@
                       <span class="mockup-header-icon blue-circle"><i class="fa-solid fa-users-viewfinder"></i></span>
                       <h3 class="mockup-header-title">Waiting List</h3>
                       <span id="admin-count" class="pill" style="display:none;">0 patients</span>
+                      <span class="priority-badge-info" title="Drag and drop patient rows to prioritize urgent consultations"><i class="fa-solid fa-arrows-up-down"></i> Drag & Drop to Prioritize</span>
                     </div>
                     <div class="waiting-header-right">
                       <div class="mockup-search-box">
@@ -407,6 +408,7 @@
                     <table class="mockup-queue-table">
                       <thead>
                         <tr>
+                          <th class="th-drag" title="Drag to reorder priority"><i class="fa-solid fa-grip-vertical"></i></th>
                           <th>Queue No.</th>
                           <th>Patient</th>
                           <th>Priority</th>
@@ -433,7 +435,7 @@
                 <h3>All Patients</h3>
                 <span id="admin-count" class="pill">0 patients</span>
               </div>
-              <ul id="patient-list" class="queue-list admin-list"></ul>
+              <ul id="admin-records-list" class="queue-list admin-list"></ul>
             </div>
           </div>
 
