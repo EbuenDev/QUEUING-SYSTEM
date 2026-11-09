@@ -468,20 +468,20 @@
               </div>
             </div>
 
-            <!-- Playlist Configuration Card -->
+            <!-- Video & Playlist Configuration Card -->
             <div class="card video-config-card">
               <div class="card-header">
-                <h3><i class="fa-solid fa-link"></i> Playlist Configuration</h3>
+                <h3><i class="fa-solid fa-play"></i> Video / Playlist Configuration</h3>
               </div>
               <form id="video-config-form" method="post" action="">
                 <div class="video-form-layout">
                   <div class="video-form-field">
-                    <label for="video-playlist-url" class="video-field-label">YouTube Playlist / Video URL(s)</label>
+                    <label for="video-playlist-url" class="video-field-label">Video or Playlist URL</label>
                     <div class="video-input-group">
                       <span class="video-input-icon"><i class="fa-brands fa-youtube"></i></span>
-                      <input id="video-playlist-url" name="playlistUrl" type="text" placeholder="Playlist URL, single video URL, or multiple video URLs (comma-separated)" />
+                      <input id="video-playlist-url" name="playlistUrl" type="text" placeholder="Paste YouTube video (even 2+ hours), live stream, playlist, or direct video link" autocomplete="off" />
                     </div>
-                    <small class="video-field-hint">Paste any YouTube or YouTube Music playlist, album, mix/radio, 24/7 live stream, single video, or multiple videos separated by commas.</small>
+                    <small class="video-field-hint">Paste any YouTube video (even 2+ hour documentaries/seminars), live stream, playlist, or direct video file.</small>
                   </div>
                   <div class="video-form-row">
                     <div class="video-form-field">
@@ -511,6 +511,9 @@
                 <div class="video-form-actions">
                   <button type="submit" class="btn btn-primary" id="video-save-btn">
                     <i class="fa-solid fa-floppy-disk"></i> Save & Apply
+                  </button>
+                  <button type="button" class="btn btn-success" id="video-play-now-btn" title="Immediately play and broadcast this video to waiting room display">
+                    <i class="fa-solid fa-circle-play"></i> Play & Broadcast Now
                   </button>
                   <button type="button" class="btn btn-secondary" id="video-clear-btn">
                     <i class="fa-solid fa-eraser"></i> Clear Playlist

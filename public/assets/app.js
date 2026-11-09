@@ -2392,14 +2392,14 @@ async function loadVideoConfigDisplay() {
         if (config.isEnabled && config.playlistId) {
           statusDot.classList.add('active');
           bannerLabel.textContent = 'Live — Broadcasting to Waiting Room';
-          bannerInfo.textContent = config.playlistTitle || 'Untitled Playlist';
+          bannerInfo.textContent = config.playlistTitle || 'Active Video';
         } else if (config.playlistId && !config.isEnabled) {
           statusDot.classList.add('disabled');
-          bannerLabel.textContent = 'Playlist Set — Broadcasting Paused';
-          bannerInfo.textContent = config.playlistTitle || 'Untitled Playlist';
+          bannerLabel.textContent = 'Video Set — Broadcasting Paused';
+          bannerInfo.textContent = config.playlistTitle || 'Paused Video';
         } else {
           bannerLabel.textContent = 'Not Configured';
-          bannerInfo.textContent = 'No playlist set';
+          bannerInfo.textContent = 'No video or playlist set';
         }
       }
 
@@ -2412,8 +2412,13 @@ async function loadVideoConfigDisplay() {
         if (config.playlistId) {
           previewPlaceholder.style.display = 'none';
           previewFrame.hidden = false;
-          const embedUrl = buildYouTubeEmbedUrl(config.playlistId, { autoplay: 0, controls: 1, playlistUrl: config.playlistUrl });
-          previewFrame.innerHTML = `<iframe id="admin-preview-iframe" src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+          const parsedPreview = parseMediaConfig(config.playlistId, config.playlistUrl || '');
+          if (parsedPreview.isDirectVideo) {
+            previewFrame.innerHTML = `<video id="admin-preview-video" src="${parsedPreview.directUrl}" controls playsinline style="width:100%;height:100%;object-fit:contain;background:#000;border-radius:8px;"></video>`;
+          } else {
+            const embedUrl = buildYouTubeEmbedUrl(config.playlistId, { autoplay: 0, controls: 1, playlistUrl: config.playlistUrl });
+            previewFrame.innerHTML = `<iframe id="admin-preview-iframe" src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="width:100%;height:100%;border:none;"></iframe>`;
+          }
           previewBadge.textContent = config.isEnabled ? 'Live' : 'Preview Only';
           previewBadge.className = 'badge ' + (config.isEnabled ? 'serving' : 'waiting');
         } else {
@@ -2438,6 +2443,10 @@ async function loadVideoConfigDisplay() {
       if (detailId) {
         if (!config.playlistId) {
           detailId.textContent = '—';
+        } else if (config.playlistId.startsWith('video:')) {
+          const fileName = (config.playlistUrl || '').split('/').pop() || 'Direct Video';
+          detailId.textContent = `Direct Video (${fileName})`;
+          detailId.title = config.playlistUrl || config.playlistId;
         } else if (config.playlistId.includes(',')) {
           const parts = config.playlistId.split(',');
           detailId.textContent = `${parts.length} videos queued (${parts[0]} +${parts.length - 1} more)`;
@@ -2447,7 +2456,7 @@ async function loadVideoConfigDisplay() {
           detailId.textContent = `Mix / Playlist: ${lid} (Starting: ${vid})`;
           detailId.title = config.playlistId;
         } else {
-          detailId.textContent = config.playlistId;
+          detailId.textContent = `YouTube Video ID: ${config.playlistId}`;
           detailId.title = config.playlistId;
         }
       }
@@ -2534,6 +2543,93 @@ async function loadVideoConfigDisplay() {
   }
 }
 
+async function handleVideoSaveAndBroadcast(forcePlay = false) {
+  const saveBtn = document.getElementById('video-save-btn');
+  const playBtn = document.getElementById('video-play-now-btn');
+  const originalSave = saveBtn ? saveBtn.innerHTML : '';
+  const originalPlay = playBtn ? playBtn.innerHTML : '';
+
+  const playlistUrlInput = document.getElementById('video-playlist-url');
+  const playlistTitleInput = document.getElementById('video-playlist-title');
+  const enabledToggle = document.getElementById('video-enabled-toggle');
+  const enabledSelect = document.getElementById('video-enabled');
+  const toggleText = document.getElementById('video-toggle-text');
+
+  let playlistUrl = playlistUrlInput?.value?.trim() || '';
+  let playlistTitle = playlistTitleInput?.value?.trim() || '';
+
+  if (!playlistUrl) {
+    alert('Please enter a video or playlist URL first.');
+    playlistUrlInput?.focus();
+    return;
+  }
+
+  if (!playlistTitle) {
+    playlistTitle = 'Health Education Video';
+    if (playlistTitleInput) playlistTitleInput.value = playlistTitle;
+  }
+
+  // Auto-enable broadcasting when playing/saving a video
+  let isEnabled = true;
+  if (!forcePlay && enabledSelect && enabledSelect.value === 'false' && enabledToggle && !enabledToggle.checked) {
+    isEnabled = false;
+  } else {
+    if (enabledToggle) enabledToggle.checked = true;
+    if (enabledSelect) enabledSelect.value = 'true';
+    if (toggleText) toggleText.textContent = 'Broadcasting';
+  }
+
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
+  }
+  if (playBtn) {
+    playBtn.disabled = true;
+    playBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Playing...';
+  }
+
+  try {
+    const res = await postAction('save-video-config', {
+      playlistUrl,
+      playlistTitle,
+      isEnabled
+    });
+
+    // Broadcast video command immediately to waiting room displays
+    broadcastVideoCommand(isEnabled ? 'play' : 'stop');
+
+    // Refresh video config display and library
+    await loadVideoConfigDisplay();
+    await loadPlaylistLibrary();
+
+    if (saveBtn) {
+      saveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Saved!';
+      setTimeout(() => {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = originalSave;
+      }, 2000);
+    }
+    if (playBtn) {
+      playBtn.innerHTML = '<i class="fa-solid fa-check"></i> Playing Live!';
+      setTimeout(() => {
+        playBtn.disabled = false;
+        playBtn.innerHTML = originalPlay;
+      }, 2000);
+    }
+  } catch (err) {
+    console.error('Error saving video config:', err);
+    alert('Failed to save video configuration. Please check the URL.');
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.innerHTML = originalSave;
+    }
+    if (playBtn) {
+      playBtn.disabled = false;
+      playBtn.innerHTML = originalPlay;
+    }
+  }
+}
+
 function initVideoManagement() {
   // Toggle switch sync with hidden select
   const enabledToggle = document.getElementById('video-enabled-toggle');
@@ -2601,46 +2697,71 @@ function initVideoManagement() {
   if (videoConfigForm) {
     videoConfigForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const saveBtn = document.getElementById('video-save-btn');
-      const originalHTML = saveBtn ? saveBtn.innerHTML : '';
-
-      if (saveBtn) {
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
-      }
-
-      const playlistUrl = document.getElementById('video-playlist-url')?.value || '';
-      const playlistTitle = document.getElementById('video-playlist-title')?.value || '';
-      const isEnabled = document.getElementById('video-enabled')?.value === 'true';
-
-      await postAction('save-video-config', {
-        playlistUrl,
-        playlistTitle,
-        isEnabled
-      });
-
-      // Broadcast video command immediately to waiting room displays
-      broadcastVideoCommand(isEnabled ? 'play' : 'stop');
-
-      // Refresh video config display and library
-      await loadVideoConfigDisplay();
-      await loadPlaylistLibrary();
-
-      if (saveBtn) {
-        saveBtn.innerHTML = '<i class="fa-solid fa-check"></i> Saved!';
-        setTimeout(() => {
-          saveBtn.disabled = false;
-          saveBtn.innerHTML = originalHTML;
-        }, 2000);
-      }
+      await handleVideoSaveAndBroadcast(false);
     });
+  }
+
+  // Play & Broadcast Now button
+  const playNowBtn = document.getElementById('video-play-now-btn');
+  if (playNowBtn) {
+    playNowBtn.addEventListener('click', async () => {
+      await handleVideoSaveAndBroadcast(true);
+    });
+  }
+
+  // Instant Live Preview on Paste / Input
+  const playlistUrlInput = document.getElementById('video-playlist-url');
+  let livePreviewDebounce = null;
+  if (playlistUrlInput) {
+    const handleUrlPasteOrInput = () => {
+      clearTimeout(livePreviewDebounce);
+      livePreviewDebounce = setTimeout(() => {
+        const val = playlistUrlInput.value.trim();
+        if (!val) return;
+        const parsed = parseMediaConfig(val, val);
+        const previewPlaceholder = document.getElementById('video-preview-placeholder');
+        const previewFrame = document.getElementById('video-preview-frame');
+        const previewBadge = document.getElementById('video-preview-badge');
+        const titleInput = document.getElementById('video-playlist-title');
+        const enabledToggle = document.getElementById('video-enabled-toggle');
+        const enabledSelect = document.getElementById('video-enabled');
+        const toggleText = document.getElementById('video-toggle-text');
+
+        if (titleInput && !titleInput.value.trim()) {
+          titleInput.value = 'Health Education Video';
+        }
+        if (enabledToggle && !enabledToggle.checked) {
+          enabledToggle.checked = true;
+          if (enabledSelect) enabledSelect.value = 'true';
+          if (toggleText) toggleText.textContent = 'Broadcasting';
+        }
+
+        if (previewPlaceholder && previewFrame && (parsed.videoId || parsed.listId || parsed.isDirectVideo)) {
+          previewPlaceholder.style.display = 'none';
+          previewFrame.hidden = false;
+          if (parsed.isDirectVideo) {
+            previewFrame.innerHTML = `<video id="admin-preview-video" src="${parsed.directUrl}" controls autoplay muted playsinline style="width:100%;height:100%;object-fit:contain;background:#000;border-radius:8px;"></video>`;
+          } else {
+            const embedUrl = buildYouTubeEmbedUrl(parsed.videoId || parsed.listId, { autoplay: 0, controls: 1, playlistUrl: val });
+            previewFrame.innerHTML = `<iframe id="admin-preview-iframe" src="${embedUrl}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" style="width:100%;height:100%;border:none;"></iframe>`;
+          }
+          if (previewBadge) {
+            previewBadge.textContent = 'Ready to Play';
+            previewBadge.className = 'badge serving';
+          }
+        }
+      }, 250);
+    };
+
+    playlistUrlInput.addEventListener('input', handleUrlPasteOrInput);
+    playlistUrlInput.addEventListener('paste', handleUrlPasteOrInput);
   }
 
   // Clear playlist button
   const clearBtn = document.getElementById('video-clear-btn');
   if (clearBtn) {
     clearBtn.addEventListener('click', async () => {
-      if (!confirm('Are you sure you want to clear the playlist? This will stop the video on the waiting room display.')) {
+      if (!confirm('Are you sure you want to clear the video? This will stop the video on the waiting room display.')) {
         return;
       }
 
@@ -2662,20 +2783,13 @@ function initVideoManagement() {
         isEnabled: false
       });
 
-      // Instantly stop video on waiting room displays
-      broadcastVideoCommand('stop', {
-        playlistId: '',
-        playlistUrl: '',
-        playlistTitle: '',
-        isEnabled: false
-      });
-
+      broadcastVideoCommand('stop');
       await loadVideoConfigDisplay();
       await loadPlaylistLibrary();
     });
   }
 
-  // Add to Library button
+  // Add to library button
   const addToLibraryBtn = document.getElementById('video-add-to-library-btn');
   if (addToLibraryBtn) {
     addToLibraryBtn.addEventListener('click', async () => {
@@ -2683,7 +2797,7 @@ function initVideoManagement() {
       const playlistTitle = document.getElementById('video-playlist-title')?.value?.trim() || '';
 
       if (!playlistUrl) {
-        alert('Please enter a YouTube playlist URL first.');
+        alert('Please enter a video or playlist URL first.');
         document.getElementById('video-playlist-url')?.focus();
         return;
       }
@@ -2700,7 +2814,7 @@ function initVideoManagement() {
           body: JSON.stringify({
             action: 'add-to-playlist-library',
             playlistUrl,
-            playlistTitle: playlistTitle || 'Untitled Playlist'
+            playlistTitle: playlistTitle || 'Health Education Video'
           }),
           cache: 'no-store'
         });
@@ -2710,11 +2824,11 @@ function initVideoManagement() {
           addToLibraryBtn.innerHTML = '<i class="fa-solid fa-check"></i> Added!';
           await loadPlaylistLibrary();
         } else {
-          alert(data?.message || 'Failed to add playlist to library.');
+          alert(data?.message || 'Failed to add video to library.');
         }
       } catch (error) {
         console.error('Error adding to library:', error);
-        alert('Failed to add playlist to library.');
+        alert('Failed to add video to library.');
       }
 
       setTimeout(() => {
@@ -2728,7 +2842,6 @@ function initVideoManagement() {
   loadVideoConfigDisplay();
   loadPlaylistLibrary();
 }
-
 // ========== Playlist Library Functions ==========
 
 async function loadPlaylistLibrary() {
@@ -4593,6 +4706,7 @@ let currentTrackIndex = 0;
 function isYoutubePlaylistId(id) {
   if (!id || typeof id !== 'string') return false;
   const clean = id.trim();
+  if (clean.startsWith('video:')) return false;
   return /^(VL)?(PL|UU|LL|FL|RD|OL|TL)[a-zA-Z0-9_-]+$/i.test(clean) || (clean.length > 20 && !clean.includes(',') && !clean.includes('?'));
 }
 
@@ -4600,9 +4714,48 @@ function parseMediaConfig(mediaId, mediaUrl = '') {
   let videoId = '';
   let listId = '';
   let multiIds = [];
+  let isDirectVideo = false;
+  let directVideoUrl = '';
 
   let text = (mediaId || '').trim();
-  const url = (mediaUrl || '').trim();
+  let url = (mediaUrl || '').trim();
+
+  // Strip iframe embed wrapper if pasted
+  const iframeMatch = text.match(/<iframe.*?src=["']([^"']+)["']/i) || url.match(/<iframe.*?src=["']([^"']+)["']/i);
+  if (iframeMatch) {
+    url = iframeMatch[1];
+    if (!text.startsWith('http') && !text.startsWith('video:')) text = url;
+  }
+
+  // Direct video file support (.mp4, .webm, .ogg, .mov, etc.)
+  if (text.startsWith('video:')) {
+    return {
+      videoId: '',
+      listId: '',
+      multiIds: [],
+      isDirectVideo: true,
+      directVideoUrl: text.substring(6).trim(),
+      directUrl: text.substring(6).trim()
+    };
+  } else if (/\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(text)) {
+    return {
+      videoId: '',
+      listId: '',
+      multiIds: [],
+      isDirectVideo: true,
+      directVideoUrl: text,
+      directUrl: text
+    };
+  } else if (/\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i.test(url)) {
+    return {
+      videoId: '',
+      listId: '',
+      multiIds: [],
+      isDirectVideo: true,
+      directVideoUrl: url,
+      directUrl: url
+    };
+  }
 
   // Strip VL prefix if present (YouTube Music virtual list prefix)
   if (text.startsWith('VLPL') || text.startsWith('VLOL') || text.startsWith('VLTL') || text.startsWith('VLRD')) {
@@ -4610,7 +4763,7 @@ function parseMediaConfig(mediaId, mediaUrl = '') {
   }
 
   // 1. Check for combo format: VIDEO_ID?list=PLAYLIST_ID or VIDEO_ID&list=PLAYLIST_ID
-  const comboMatch = text.match(/^([a-zA-Z0-9_-]{11})[?&]list=([a-zA-Z0-9_-]+)$/i);
+  const comboMatch = text.match(/^([a-zA-Z0-9_-]{11})[?&]list=([a-zA-Z0-9_-]+)/i);
   if (comboMatch) {
     videoId = comboMatch[1];
     listId = comboMatch[2];
@@ -4649,12 +4802,23 @@ function parseMediaConfig(mediaId, mediaUrl = '') {
     listId = listId.replace(/^VL(?=(PL|OL|TL|RD))/i, '');
   }
 
-  return { videoId, listId, multiIds };
+  // If a single video (e.g. 2-hour long video) was copied from a private user list (WL = Watch Later, LL = Liked Videos, RD mix),
+  // drop the listId so YouTube embed player doesn't reject with Error 150/101!
+  if (videoId && listId && /^(WL|LL|LM|RD)/i.test(listId)) {
+    listId = '';
+  }
+
+  return { videoId, listId, multiIds, isDirectVideo: false, directVideoUrl: '', directUrl: '' };
 }
 
 function buildYouTubeEmbedUrl(mediaId, options = {}) {
   const mediaUrl = options.playlistUrl || (state.videoConfig && state.videoConfig.playlistUrl) || '';
   const parsed = parseMediaConfig(mediaId, mediaUrl);
+
+  if (parsed.isDirectVideo) {
+    return parsed.directVideoUrl;
+  }
+
   const autoplay = options.autoplay ? 1 : 0;
   const controls = options.controls !== undefined ? options.controls : 1;
   const origin = (window.location.origin && window.location.origin !== 'null' && window.location.protocol.startsWith('http'))
@@ -4662,7 +4826,7 @@ function buildYouTubeEmbedUrl(mediaId, options = {}) {
     : '';
 
   const originParam = origin ? `&origin=${encodeURIComponent(origin)}` : '';
-  const baseParams = `autoplay=${autoplay}&controls=${controls}&rel=0&modestbranding=1&enablejsapi=1${originParam}`;
+  const baseParams = `autoplay=${autoplay}&controls=${controls}&rel=0&modestbranding=1&enablejsapi=1&playsinline=1${originParam}`;
 
   if (parsed.videoId && parsed.listId) {
     return `https://www.youtube.com/embed/${encodeURIComponent(parsed.videoId)}?list=${encodeURIComponent(parsed.listId)}&${baseParams}`;
@@ -4672,6 +4836,7 @@ function buildYouTubeEmbedUrl(mediaId, options = {}) {
   } else if (parsed.listId) {
     return `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(parsed.listId)}&${baseParams}`;
   } else if (parsed.videoId) {
+    // For single videos (including 2+ hour videos), YouTube embed requires playlist equal to videoId and loop=1
     return `https://www.youtube.com/embed/${encodeURIComponent(parsed.videoId)}?playlist=${encodeURIComponent(parsed.videoId)}&loop=1&${baseParams}`;
   }
   return '';
@@ -4690,6 +4855,28 @@ function postToPlayerIframe(func, args = []) {
           args: args
         }), '*');
       }
+    });
+
+    // Also support controlling direct HTML5 <video> elements
+    const videoEls = document.querySelectorAll('#html5-video-player, #admin-preview-video, .waiting-room-video');
+    videoEls.forEach((vid) => {
+      try {
+        if (func === 'playVideo') {
+          vid.play().catch(() => {});
+        } else if (func === 'pauseVideo') {
+          vid.pause();
+        } else if (func === 'stopVideo') {
+          vid.pause();
+          vid.currentTime = 0;
+        } else if (func === 'mute') {
+          vid.muted = true;
+        } else if (func === 'unMute') {
+          vid.muted = false;
+        } else if (func === 'setVolume') {
+          const vol = (args && args[0] !== undefined) ? Number(args[0]) : 100;
+          vid.volume = Math.max(0, Math.min(1, vol / 100));
+        }
+      } catch (e) {}
     });
   } catch (err) {
     console.warn('postToPlayerIframe error:', err);
@@ -4717,6 +4904,14 @@ function unmuteYouTubePlayer() {
       if (typeof youtubePlayer.setVolume === 'function') youtubePlayer.setVolume(100);
     } catch (e) {}
   }
+  const html5Video = document.getElementById('html5-video-player');
+  if (html5Video) {
+    try {
+      html5Video.muted = false;
+      html5Video.volume = 1.0;
+      html5Video.play().catch(() => {});
+    } catch (e) {}
+  }
   postToPlayerIframe('unMute');
   postToPlayerIframe('setVolume', [100]);
   hideUnmuteNotice();
@@ -4727,6 +4922,9 @@ function unmuteYouTubePlayer() {
       if (youtubePlayer && typeof youtubePlayer.isMuted === 'function' && youtubePlayer.isMuted()) {
         showUnmuteNotice();
       }
+      if (html5Video && html5Video.muted) {
+        showUnmuteNotice();
+      }
     } catch (e) {}
   }, 400);
 }
@@ -4734,7 +4932,6 @@ function unmuteYouTubePlayer() {
 function forceAutoplay(player) {
   if (!player) return;
 
-  // Ensure iframe permissions and referrer policy allow autoplay and cross-origin embed across all browsers
   try {
     const iframe = typeof player.getIframe === 'function' ? player.getIframe() : (typeof player.getIFrame === 'function' ? player.getIFrame() : document.querySelector('#youtube-player iframe, iframe#youtube-player'));
     if (iframe) {
@@ -4790,6 +4987,19 @@ function forceAutoplay(player) {
 function advancePlaylistNext() {
   let handled = false;
 
+  // Single video loop handler (e.g. 2-hour long video)
+  if ((!currentTrackList || currentTrackList.length <= 1) && youtubePlayer) {
+    try {
+      if (typeof youtubePlayer.seekTo === 'function') {
+        youtubePlayer.seekTo(0);
+        if (typeof youtubePlayer.playVideo === 'function') {
+          youtubePlayer.playVideo();
+        }
+        return;
+      }
+    } catch (e) {}
+  }
+
   // 1. If custom list of video IDs is queued:
   if (currentTrackList && currentTrackList.length > 1) {
     currentTrackIndex = (currentTrackIndex + 1) % currentTrackList.length;
@@ -4835,6 +5045,19 @@ function advancePlaylistNext() {
 
 function advancePlaylistPrev() {
   let handled = false;
+
+  // Single video rewind (e.g. 2-hour long video)
+  if ((!currentTrackList || currentTrackList.length <= 1) && youtubePlayer) {
+    try {
+      if (typeof youtubePlayer.seekTo === 'function') {
+        youtubePlayer.seekTo(0);
+        if (typeof youtubePlayer.playVideo === 'function') {
+          youtubePlayer.playVideo();
+        }
+        return;
+      }
+    } catch (e) {}
+  }
 
   // 1. If custom list of video IDs is queued:
   if (currentTrackList && currentTrackList.length > 1) {
@@ -4883,7 +5106,7 @@ function advancePlaylistPrev() {
 function stopYouTubePlayer() {
   const placeholder = document.getElementById('youtube-placeholder');
   const subtitle = document.querySelector('.video-card .card-subtitle');
-  if (subtitle) subtitle.textContent = 'YouTube playlist';
+  if (subtitle) subtitle.textContent = 'Queue Video Player';
   if (placeholder) {
     placeholder.hidden = false;
     const placeholderText = document.querySelector('.placeholder-text');
@@ -4909,6 +5132,11 @@ function stopYouTubePlayer() {
   if (playerEl) {
     playerEl.remove();
   }
+  const html5El = document.getElementById('html5-video-player');
+  if (html5El) {
+    try { html5El.pause(); } catch (e) {}
+    html5El.remove();
+  }
 
   currentLoadedPlaylistId = null;
   currentPlaylistEnabled = false;
@@ -4927,6 +5155,11 @@ function recreateYouTubePlayer(forcePlay = true) {
   const existingPlayer = document.getElementById('youtube-player');
   if (existingPlayer) {
     existingPlayer.remove();
+  }
+  const html5El = document.getElementById('html5-video-player');
+  if (html5El) {
+    try { html5El.pause(); } catch (e) {}
+    html5El.remove();
   }
   currentLoadedPlaylistId = null;
   currentPlaylistEnabled = null;
@@ -4987,22 +5220,76 @@ function initYouTubePlayer(forcePlay = false) {
     stopYouTubePlayer();
     const placeholderText = document.querySelector('.placeholder-text');
     if (placeholderText) {
-      placeholderText.textContent = 'No playlist configured';
+      placeholderText.textContent = 'No video configured';
     }
     return;
   }
 
-  // Active playlist configured
+  const cleanId = (videoConfig.playlistId || '').trim();
+  const parsed = parseMediaConfig(cleanId, videoConfig.playlistUrl || '');
+  const isPaused = Boolean(videoConfig.isPaused);
+
+  // Active playlist/video configured
   if (subtitle && videoConfig.playlistTitle) {
     subtitle.textContent = videoConfig.playlistTitle;
   }
 
-  // If already playing this playlist and not forced, don't restart it on every poll
-  if (currentLoadedPlaylistId === videoConfig.playlistId && currentPlaylistEnabled === true && !forcePlay && youtubePlayer) {
-    const playerEl = document.getElementById('youtube-player');
+  // If already playing this media and not forced, don't restart it on every poll (crucial for long 2-hour videos!)
+  const activeVideoTag = document.getElementById('html5-video-player');
+  if (currentLoadedPlaylistId === cleanId && currentPlaylistEnabled === true && !forcePlay && (youtubePlayer || activeVideoTag)) {
+    const playerEl = document.getElementById('youtube-player') || activeVideoTag;
     if (playerEl) playerEl.style.display = '';
     if (placeholder) placeholder.hidden = true;
     return;
+  }
+
+  // --- Case A: Direct Video File (.mp4, .webm, etc.) ---
+  if (parsed.isDirectVideo) {
+    if (youtubePlayer) {
+      try { youtubePlayer.destroy(); } catch (e) {}
+      youtubePlayer = null;
+    }
+    const oldYtDiv = document.getElementById('youtube-player');
+    if (oldYtDiv) oldYtDiv.remove();
+
+    if (placeholder) placeholder.hidden = true;
+
+    let videoTag = document.getElementById('html5-video-player');
+    if (!videoTag) {
+      videoTag = document.createElement('video');
+      videoTag.id = 'html5-video-player';
+      videoTag.className = 'youtube-player waiting-room-video';
+      videoTag.setAttribute('controls', '1');
+      videoTag.setAttribute('playsinline', '1');
+      videoTag.setAttribute('loop', '1');
+      videoTag.setAttribute('preload', 'auto');
+      videoTag.style.cssText = 'width: 100%; height: 100%; object-fit: contain; background: #000; border-radius: 8px;';
+      if (playerContainer) playerContainer.appendChild(videoTag);
+    }
+    videoTag.style.display = '';
+    videoTag.src = parsed.directVideoUrl;
+
+    if (!isPaused) {
+      videoTag.play().catch(() => {
+        // Autoplay policy fallback: mute and play
+        videoTag.muted = true;
+        videoTag.play().catch(() => {});
+        showUnmuteNotice();
+      });
+    } else {
+      videoTag.pause();
+    }
+
+    currentLoadedPlaylistId = cleanId;
+    currentPlaylistEnabled = true;
+    return;
+  }
+
+  // --- Case B: YouTube Video or Playlist ---
+  // If direct HTML5 video was playing, remove it
+  if (activeVideoTag) {
+    try { activeVideoTag.pause(); } catch (e) {}
+    activeVideoTag.remove();
   }
 
   // YouTube API might not be loaded yet
@@ -5012,7 +5299,7 @@ function initYouTubePlayer(forcePlay = false) {
   }
 
   // If forcePlay requested or playlist changed, cleanly destroy existing player first
-  if (youtubePlayer && (forcePlay || currentLoadedPlaylistId !== videoConfig.playlistId)) {
+  if (youtubePlayer && (forcePlay || currentLoadedPlaylistId !== cleanId)) {
     try {
       if (typeof youtubePlayer.destroy === 'function') {
         youtubePlayer.destroy();
@@ -5034,10 +5321,6 @@ function initYouTubePlayer(forcePlay = false) {
     if (playerContainer) playerContainer.appendChild(playerDiv);
   }
   playerDiv.style.display = '';
-
-  const cleanId = (videoConfig.playlistId || '').trim();
-  const parsed = parseMediaConfig(cleanId, videoConfig.playlistUrl || '');
-  const isPaused = Boolean(videoConfig.isPaused);
 
   let playerConfig = {
     height: '100%',
@@ -5098,6 +5381,7 @@ function initYouTubePlayer(forcePlay = false) {
     currentTrackIndex = 0;
   } else if (parsed.videoId) {
     playerConfig.videoId = parsed.videoId;
+    // For single videos (like a 2-hour long video), passing playlist equal to videoId enables native looping!
     playerConfig.playerVars.playlist = parsed.videoId;
     currentTrackList = [parsed.videoId];
     currentTrackIndex = 0;
@@ -5106,7 +5390,7 @@ function initYouTubePlayer(forcePlay = false) {
   // Create new player with autoplay, loop, and API enabled
   try {
     youtubePlayer = new YT.Player('youtube-player', playerConfig);
-    currentLoadedPlaylistId = videoConfig.playlistId;
+    currentLoadedPlaylistId = cleanId;
     currentPlaylistEnabled = true;
   } catch (err) {
     console.error('Error creating YouTube player:', err);
@@ -5120,6 +5404,17 @@ function onPlayerStateChange(event) {
   }
   // YT.PlayerState.ENDED = 0
   if (event.data === 0) {
+    // For single videos (including 2-hour videos), loop seamlessly back to beginning
+    if (!currentTrackList || currentTrackList.length <= 1) {
+      console.log('Single video ended, looping back to start...');
+      try {
+        if (youtubePlayer && typeof youtubePlayer.seekTo === 'function') {
+          youtubePlayer.seekTo(0);
+          youtubePlayer.playVideo();
+          return;
+        }
+      } catch (e) {}
+    }
     console.log('Video finished. Auto-advancing to next video in playlist...');
     advancePlaylistNext();
   }
@@ -5129,9 +5424,23 @@ function onPlayerError(event) {
   console.warn('YouTube player error code:', event.data);
   consecutiveVideoErrors++;
 
-  // Auto-recovery: if a video in a playlist encounters an error (e.g. 100, 101, 150, 153),
-  // automatically advance to the next video in the playlist
-  if (consecutiveVideoErrors < 25) {
+  const cleanId = (state.videoConfig && state.videoConfig.playlistId || '').trim();
+  const parsed = parseMediaConfig(cleanId, (state.videoConfig && state.videoConfig.playlistUrl) || '');
+
+  // If this is a single video (e.g. 2-hour video) and YT API errored (e.g. 101/150 embed restriction or sandbox issue),
+  // fallback to direct iframe embed so waiting room display never breaks!
+  if (!parsed.listId && parsed.videoId && consecutiveVideoErrors <= 3) {
+    console.log('Single video API error encountered. Falling back to direct iframe embed...');
+    const container = document.getElementById('youtube-player-container');
+    if (container) {
+      const embedUrl = buildYouTubeEmbedUrl(parsed.videoId, { autoplay: 1, controls: 1, playlistUrl: state.videoConfig?.playlistUrl });
+      container.innerHTML = `<iframe id="youtube-player" src="${embedUrl}" style="width:100%;height:100%;border:0;border-radius:8px;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
+      return;
+    }
+  }
+
+  // Auto-recovery for playlists: advance to next track
+  if (consecutiveVideoErrors < 25 && parsed.listId) {
     console.log(`Unplayable track encountered (Error ${event.data}). Auto-skipping to next track in playlist...`);
     setTimeout(() => {
       advancePlaylistNext();

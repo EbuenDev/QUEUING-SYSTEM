@@ -697,7 +697,8 @@ function fetchPlaylistVideoIds(string $playlistId): array {
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 3);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
     $html = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -734,23 +735,40 @@ function extractYoutubePlaylistId(string $url): ?string {
         return null;
     }
 
-    // Extract seed video ID if present in the URL (regular watch, youtu.be, embed, live, shorts)
+    // 0. Handle if an iframe HTML embed code was pasted (e.g. <iframe ... src="...">)
+    if (preg_match('/src=["\']([^"\']+)["\']/i', $input, $srcMatch)) {
+        $input = trim($srcMatch[1]);
+    }
+
+    // 1. Direct video file URL (.mp4, .webm, .ogg, .mov, .m4v) or existing video: prefix
+    if (strpos($input, 'video:') === 0) {
+        return $input;
+    }
+    if (preg_match('#^https?://[^\s<>"\'()]+\.(mp4|webm|ogg|mov|m4v)(\?[^\s<>"\'()]*)?$#i', $input)) {
+        return 'video:' . $input;
+    }
+
+    // 2. Extract seed video ID if present in the URL (regular watch, youtu.be, embed, live, shorts, etc.)
     $seedVideoId = null;
     if (preg_match('/[?&]v=([a-zA-Z0-9_-]{11})/', $input, $vm)) {
         $seedVideoId = $vm[1];
-    } elseif (preg_match('#youtu\.be/([a-zA-Z0-9_-]{11})#', $input, $vm)) {
-        $seedVideoId = $vm[1];
-    } elseif (preg_match('#/(?:live|shorts|embed)/([a-zA-Z0-9_-]{11})#', $input, $vm)) {
+    } elseif (preg_match('#(?:youtu\.be/|youtube(?:-nocookie)?\.com/(?:live|shorts|embed)/)([a-zA-Z0-9_-]{11})#i', $input, $vm)) {
         $seedVideoId = $vm[1];
     }
 
-    // 1. YouTube playlist query param: ?list=... or &list=... (including music.youtube.com and browse/VL...)
-    if (preg_match('/[?&]list=([a-zA-Z0-9_-]+)/', $input, $matches)) {
+    // 3. YouTube playlist query param: ?list=... or &list=... (including music.youtube.com and browse/VL...)
+    if (preg_match('/[?&]list=([a-zA-Z0-9_-]+)/i', $input, $matches)) {
         $rawPlaylistId = $matches[1];
-        // Strip YouTube Music virtual list prefix (e.g. VLPL... -> PL..., VLOL... -> OL...)
         $cleanPlaylistId = preg_replace('/^VL(?=(PL|OL|TL|RD))/i', '', $rawPlaylistId);
 
-        // If it's an RD mix without explicit ?v=, check if the video ID is embedded in the Mix ID
+        // If it's a private list (WL=Watch Later, LL=Liked, LM=Liked Music) or an automated Mix (RD...):
+        // When a seed video is present (e.g. a 2-hour video pasted from a user\'s playlist or radio),
+        // private list IDs fail to embed in iframes (YouTube Error 150/101). Return the seed video directly!
+        if ($seedVideoId && preg_match('/^(WL|LL|LM|RD)/i', $cleanPlaylistId)) {
+            return $seedVideoId;
+        }
+
+        // Check if video ID is embedded in an RD Mix ID without explicit ?v=
         if (!$seedVideoId && preg_match('/^RD(?:MM|AMVM)?([a-zA-Z0-9_-]{11})$/i', $cleanPlaylistId, $rdm)) {
             $seedVideoId = $rdm[1];
         }
@@ -760,7 +778,6 @@ function extractYoutubePlaylistId(string $url): ?string {
         if ($isStaticPlaylist) {
             $videoIds = fetchPlaylistVideoIds($cleanPlaylistId);
             if (!empty($videoIds)) {
-                // If seed video was specified and is in list, move it to front
                 if ($seedVideoId && in_array($seedVideoId, $videoIds, true)) {
                     $videoIds = array_values(array_unique(array_merge([$seedVideoId], $videoIds)));
                 }
@@ -768,21 +785,20 @@ function extractYoutubePlaylistId(string $url): ?string {
             }
         }
 
-        // If seed video is available (essential for RD mixes and helpful for music playlists), return combo
+        // If seed video is available and playlist couldn\'t be scraped, return seed video ID
         if ($seedVideoId) {
-            return $seedVideoId . '?list=' . $cleanPlaylistId;
+            return $seedVideoId;
         }
 
         return $cleanPlaylistId;
     }
 
-    // 2. Direct YouTube playlist ID (e.g. PL..., UU..., FL..., RD..., OL..., TL..., or VLPL...)
+    // 4. Direct YouTube playlist ID (e.g. PL..., UU..., FL..., RD..., OL..., TL..., or VLPL...)
     if (preg_match('/^(VL)?(PL|UU|FL|RD|OL|TL)[a-zA-Z0-9_-]{8,}$/i', $input, $pm)) {
         $cleanInput = preg_replace('/^VL(?=(PL|OL|TL|RD))/i', '', $input);
 
-        // If it's an RD mix ID, check if video ID is part of the ID
         if (preg_match('/^RD(?:MM|AMVM)?([a-zA-Z0-9_-]{11})$/i', $cleanInput, $rdm)) {
-            return $rdm[1] . '?list=' . $cleanInput;
+            return $rdm[1];
         }
 
         $videoIds = fetchPlaylistVideoIds($cleanInput);
@@ -792,18 +808,18 @@ function extractYoutubePlaylistId(string $url): ?string {
         return $cleanInput;
     }
 
-    // 3. Multiple video URLs or video IDs (separated by comma, newline, pipe, or space)
+    // 5. Multiple video URLs or video IDs (separated by comma, newline, pipe, or space)
     $tokens = preg_split('/[\s,\|\n\r]+/', $input);
     $extractedVideos = [];
     foreach ($tokens as $token) {
         $token = trim($token);
         if ($token === '') continue;
 
-        if (preg_match('#youtu\.be/([a-zA-Z0-9_-]{11})#', $token, $m)) {
+        if (preg_match('#youtu\.be/([a-zA-Z0-9_-]{11})#i', $token, $m)) {
             $extractedVideos[] = $m[1];
         } elseif (preg_match('/[?&]v=([a-zA-Z0-9_-]{11})/', $token, $m)) {
             $extractedVideos[] = $m[1];
-        } elseif (preg_match('#/(?:embed|live|shorts)/([a-zA-Z0-9_-]{11})#', $token, $m)) {
+        } elseif (preg_match('#/(?:embed|live|shorts)/([a-zA-Z0-9_-]{11})#i', $token, $m)) {
             $extractedVideos[] = $m[1];
         } elseif (preg_match('/^[a-zA-Z0-9_-]{11}$/', $token)) {
             $extractedVideos[] = $token;
@@ -815,20 +831,18 @@ function extractYoutubePlaylistId(string $url): ?string {
         return implode(',', $unique);
     }
 
-    // 4. Single video URL formats (including /live/, /shorts/, youtu.be, etc.)
-    if (preg_match('/[?&]v=([a-zA-Z0-9_-]{11})/', $input, $matches)) {
-        return $matches[1];
+    // 6. Single video URL formats (watch, youtu.be, live, shorts, embed)
+    if ($seedVideoId) {
+        return $seedVideoId;
     }
-    if (preg_match('#youtu\.be/([a-zA-Z0-9_-]{11})#', $input, $matches)) {
-        return $matches[1];
-    }
-    if (preg_match('#/(?:embed|live|shorts)/([a-zA-Z0-9_-]{11})#', $input, $matches)) {
-        return $matches[1];
+
+    // 7. Direct 11-char video ID (e.g. pasted directly like \'jfKfPfyJRdk\')
+    if (preg_match('/^[a-zA-Z0-9_-]{11}$/', $input)) {
+        return $input;
     }
 
     return null;
 }
-
 // ========== Playlist Library Functions ==========
 
 function loadPlaylistLibrary(?PDO $db): array {
@@ -2281,7 +2295,7 @@ try {
             if ($playlistUrl !== '') {
                 $playlistId = extractYoutubePlaylistId($playlistUrl);
                 if (!$playlistId) {
-                    jsonResponse(['success' => false, 'message' => 'Invalid YouTube playlist URL'], 400);
+                    jsonResponse(['success' => false, 'message' => 'Invalid video or playlist URL. Please enter a valid YouTube video/playlist link or direct video file.'], 400);
                     exit;
                 }
             } else {
@@ -2373,7 +2387,7 @@ try {
 
             $playlistId = extractYoutubePlaylistId($playlistUrl);
             if (!$playlistId) {
-                jsonResponse(['success' => false, 'message' => 'Invalid YouTube playlist URL'], 400);
+                jsonResponse(['success' => false, 'message' => 'Invalid video or playlist URL. Please enter a valid YouTube video/playlist link or direct video file.'], 400);
                 exit;
             }
 
